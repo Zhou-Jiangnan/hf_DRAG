@@ -172,34 +172,26 @@ class LocalRAGNode:
 
         return response_text
 
+def evaluate(predictions: List[str], ground_truth: List[str]) -> Dict[str, float]:
+    """Calculate evaluation metrics"""
+    # Exact Match
+    em_score = sum(p.strip() == g.strip() for p, g in zip(predictions, ground_truth)) / len(predictions)
 
-class DRAGEvaluator:
-    @staticmethod
-    def evaluate(
-            predictions: List[str],
-            ground_truth: List[str]
-    ) -> Dict[str, float]:
-        """Calculate evaluation metrics"""
-        # Exact Match
-        em_score = sum(p.strip() == g.strip()
-                       for p, g in zip(predictions, ground_truth)) / len(predictions)
+    # TODO
+    # Convert to binary labels for classification metrics
+    # This is a simplified approach - in practice, you might want more sophisticated
+    # methods for converting text to binary labels
+    binary_preds = [1 if p.strip() == g.strip() else 0 for p, g in zip(predictions, ground_truth)]
+    binary_truth = [1] * len(ground_truth)
 
-        # TODO
-        # Convert to binary labels for classification metrics
-        # This is a simplified approach - in practice, you might want more sophisticated
-        # methods for converting text to binary labels
-        binary_preds = [1 if p.strip() == g.strip() else 0
-                        for p, g in zip(predictions, ground_truth)]
-        binary_truth = [1] * len(ground_truth)
+    metrics = {
+        "exact_match": em_score,
+        "accuracy": accuracy_score(binary_truth, binary_preds),
+        "f1": f1_score(binary_truth, binary_preds),
+        "recall": recall_score(binary_truth, binary_preds)
+    }
 
-        metrics = {
-            "exact_match": em_score,
-            "accuracy": accuracy_score(binary_truth, binary_preds),
-            "f1": f1_score(binary_truth, binary_preds),
-            "recall": recall_score(binary_truth, binary_preds)
-        }
-
-        return metrics
+    return metrics
 
 
 def run_evaluation(llm_api_endpoint: str, llm_name: str, ds_config: dict):
@@ -224,6 +216,7 @@ def run_evaluation(llm_api_endpoint: str, llm_name: str, ds_config: dict):
         nodes[node_idx].add_to_local_dataset(datapoint)
 
     # Run evaluation
+    contexts = []
     predictions = []
     ground_truth = []
 
@@ -237,8 +230,7 @@ def run_evaluation(llm_api_endpoint: str, llm_name: str, ds_config: dict):
         ground_truth.append(item["answer"])
 
     # Calculate metrics
-    evaluator = DRAGEvaluator()
-    metrics = evaluator.evaluate(predictions, ground_truth)
+    metrics = evaluate(predictions, ground_truth)
 
     return metrics
 

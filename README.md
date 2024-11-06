@@ -1,26 +1,33 @@
 # Distributed Retrieval-Augmented Generation
 
-https://platform.openai.com/docs/api-reference/completions/create
-
-vllm serve meta-llama/Llama-3.2-1B
-
-curl http://localhost:8000/v1/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-     "model": "meta-llama/Llama-3.2-1B",
-     "prompt": "San Francisco is a",
-     "temperature": 0
-   }'
-
 ## Prerequisites
 
 - Ubuntu 22.04
 - Python 3.10
+- Ollama 0.4.0
 
 Install Python requirements:
 
 ```bash
 $ python install -r requirements.txt 
+```
+
+Start [Ollama](https://github.com/ollama/ollama/blob/main/docs/faq.md):
+
+```bash
+# start Llama 3.2 - 3B
+# for other Ollama models: https://ollama.com/library
+$ ollama run llama3.2
+# preload a model into Ollama to get faster response times:
+$ curl http://localhost:11434/api/generate -d '{"model": "llama3.2"}'
+```
+
+Initialize DeepEval to use local Ollama model:
+
+```bash
+$ deepeval set-local-model --model-name="llama3.2" --base-url="http://localhost:11434/v1/" --api-key="ollama"
+# To unset the local model:
+$ deepeval unset-local-model
 ```
 
 ## Models

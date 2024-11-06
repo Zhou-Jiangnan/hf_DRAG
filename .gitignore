@@ -1,8 +1,8 @@
 # MacOS
 .DS_Store
 
-# logs
-lightning_logs/
+# DeepEval Config
+*.deepeval*
 
 # media files
 *.mp4
