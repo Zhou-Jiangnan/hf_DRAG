@@ -20,6 +20,9 @@ Start [Ollama](https://github.com/ollama/ollama/blob/main/docs/faq.md):
 $ ollama run llama3.2
 # preload a model into Ollama to get faster response times:
 $ curl http://localhost:11434/api/generate -d '{"model": "llama3.2"}'
+# start/stop ollama service:
+$ sudo systemctl start ollama
+$ sudo systemctl stop ollama
 ```
 
 Initialize DeepEval to use local Ollama model:

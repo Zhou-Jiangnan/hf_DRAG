@@ -1,7 +1,10 @@
 model:
-  endpoint: http://localhost:8000/v1/completions
-  name: meta-llama/Llama-3.2-1B
-data:  # parameters for datasets.load_dataset()
-  path: mandarjoshi/trivia_qa
-  name: rc.nocontext
-  split: validation
+  endpoint: http://localhost:11434/api/generate
+  name: llama3.2
+data:
+  load:  # parameters for datasets.load_dataset()
+    path: mandarjoshi/trivia_qa
+    name: rc.nocontext
+    split: validation
+  question_path: question
+  answer_path: answer.value

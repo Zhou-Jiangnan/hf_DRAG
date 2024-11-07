@@ -1,13 +1,16 @@
+import json
 from dataclasses import dataclass
 import logging
 import random
 import requests
-from typing import List, Dict
+from typing import List
 
 from datasets import load_dataset
-from jsonargparse import ArgumentParser, CLI
-from sklearn.metrics import accuracy_score, f1_score, recall_score
+from deepeval.test_case import LLMTestCase
+from deepeval.dataset import EvaluationDataset
+from jsonargparse import ArgumentParser
 
+from evaluator import Evaluator
 
 logger = logging.getLogger(__file__)
 
@@ -26,13 +29,12 @@ class RetrievalRequest:
 
 
 @dataclass
-class LocalDatapoint:
+class Datapoint:
     question: str
-    context: str
     answer: str
 
 
-class LocalRAGNode:
+class RAGNode:
     def __init__(
             self,
             node_id: str,
@@ -46,9 +48,9 @@ class LocalRAGNode:
         self.llm_name = llm_name
         self.confidence_threshold = confidence_threshold
         self.num_retrievals = num_retrievals
-        self.local_dataset: List[LocalDatapoint] = []
+        self.local_dataset: List[Datapoint] = []
 
-    def add_to_local_dataset(self, datapoint: LocalDatapoint):
+    def add_to_local_dataset(self, datapoint: Datapoint):
         """Add a new datapoint to local RAG dataset"""
         self.local_dataset.append(datapoint)
 
@@ -56,14 +58,15 @@ class LocalRAGNode:
         body_data = {
             "model": self.llm_name,
             "prompt": prompt,
-            "temperature": 0,
+            "stream": False,
+            "format": "json",
         }
 
         response = requests.post(
             self.llm_api_endpoint,
-            json=body_data
+            json=body_data,
         )
-        response_text = response.json()["choices"][0]["text"]
+        response_text = response.json()["response"]
         return response_text
 
     def process_question(self, question: str, peer_nodes: List[str]) -> str:
@@ -99,21 +102,22 @@ class LocalRAGNode:
         relevant_context = self.retrieve_local_context(question)
 
         # Construct prompt with context
-        prompt = f"""Question: {question}
+        prompt = f"""
+        Question: {question}
         Context: {relevant_context}
-        Please provide an answer based on the context above and rate your confidence from 0.0 to 1.0 
-        in the following format:
-        Answer: <your_answer>
-        Confidence: <confidence_score>"""
+        Please provide an answer based on the context above and rate your confidence from 0.0 to 1.0.
+        Respond using JSON with keys: `answer`, `confidence`."""
 
         # Call LLM API
         response_text = self.llm_post(prompt)
+        # print(f"Debug response_text: {response_text}")
+        response_json = json.loads(response_text)
 
         # Parse answer and confidence
-        answer_line = response_text.split("\n")[0]
-        confidence_line = response_text.split("\n")[1]
-        answer = answer_line.replace("Answer: ", "")
-        confidence = float(confidence_line.replace("Confidence: ", ""))
+        answer = response_json.get("answer", "None")
+        confidence = response_json.get("confidence", 0.0)
+        confidence = float(confidence)
+        # print(f"Debug [question]: {question} [answer]: {answer}; [confidence]: {confidence}")
 
         return RAGAnswer(answer, confidence, self.node_id)
 
@@ -121,13 +125,10 @@ class LocalRAGNode:
         """Retrieve relevant context from local dataset"""
         # TODO:
         # Simple implementation - could be improved with better similarity search
-        if not self.local_dataset:
-            return ""
-
         # Random selection for demonstration
         # In practice, use embedding similarity or other retrieval methods
-        random_datapoint = random.choice(self.local_dataset)
-        return random_datapoint.context
+        context_datapoint = random.choice(self.local_dataset)
+        return context_datapoint.question + " " + context_datapoint.answer
 
     def handle_retrieval_request(self, request: RetrievalRequest) -> RAGAnswer:
         """Handle retrieval requests from other nodes"""
@@ -172,80 +173,76 @@ class LocalRAGNode:
 
         return response_text
 
-def evaluate(predictions: List[str], ground_truth: List[str]) -> Dict[str, float]:
-    """Calculate evaluation metrics"""
-    # Exact Match
-    em_score = sum(p.strip() == g.strip() for p, g in zip(predictions, ground_truth)) / len(predictions)
 
-    # TODO
-    # Convert to binary labels for classification metrics
-    # This is a simplified approach - in practice, you might want more sophisticated
-    # methods for converting text to binary labels
-    binary_preds = [1 if p.strip() == g.strip() else 0 for p, g in zip(predictions, ground_truth)]
-    binary_truth = [1] * len(ground_truth)
-
-    metrics = {
-        "exact_match": em_score,
-        "accuracy": accuracy_score(binary_truth, binary_preds),
-        "f1": f1_score(binary_truth, binary_preds),
-        "recall": recall_score(binary_truth, binary_preds)
-    }
-
-    return metrics
+def get_dict_val(dict_item, dot_keys):
+    """Get nested value from the dict"""
+    keys = dot_keys.split(".")
+    val = dict_item
+    for key in keys:
+        val = val[key]
+    return val
 
 
-def run_evaluation(llm_api_endpoint: str, llm_name: str, ds_config: dict):
+def run_evaluation(llm_api_endpoint: str, llm_name: str, data_config: dict):
     """Run evaluation on a HuggingFace dataset"""
     # Load Huggingface dataset
-    dataset = load_dataset(**ds_config)
+    dataset = load_dataset(**data_config["load"])
 
-    # Initialize nodes
-    nodes = [
-        LocalRAGNode(f"node_{i}", llm_api_endpoint, llm_name)
-        for i in range(3)  # Create 3 nodes for demonstration
+    # Initialize nodes, node_0 is the global node with all datapoints
+    global_node = RAGNode("node_0", llm_api_endpoint, llm_name)
+    local_nodes = [
+        RAGNode(f"node_{i}", llm_api_endpoint, llm_name)
+        for i in range(1, 3+1)  # Create 3 nodes for demonstration
     ]
 
     # Distribute data among nodes
-    for i, item in enumerate(dataset):
-        node_idx = i % len(nodes)
-        datapoint = LocalDatapoint(
-            item["question"],
-            item.get("context", ""),  # Some datasets might not have context
-            item["answer"]
-        )
-        nodes[node_idx].add_to_local_dataset(datapoint)
+    # random pick 20 samples for testing
+    for i, item in enumerate(dataset.take(20)):
+        node_idx = i % len(local_nodes)
+        question = get_dict_val(item, data_config["question_path"])
+        answer = get_dict_val(item, data_config["answer_path"])
+        datapoint = Datapoint(question, answer)
+
+        # TODO: randomly distribute datapoint
+        global_node.add_to_local_dataset(datapoint)
+        local_nodes[node_idx].add_to_local_dataset(datapoint)
 
     # Run evaluation
-    contexts = []
-    predictions = []
-    ground_truth = []
+    evaluation_dataset = EvaluationDataset()
 
-    for item in dataset:
+    for item in global_node.local_dataset:
         # Each question is processed by a random node
-        node = random.choice(nodes)
-        peer_nodes = [n.node_id for n in nodes if n.node_id != node.node_id]
+        node = random.choice(local_nodes)
+        peer_nodes = [n.node_id for n in local_nodes if n.node_id != node.node_id]
 
-        prediction = node.process_question(item["question"], peer_nodes)
-        predictions.append(prediction)
-        ground_truth.append(item["answer"])
+        # prompt_input, prediction, and expected_output
+        prediction = node.process_question(item.question, peer_nodes)
+
+        # DeepEval test case
+        test_case = LLMTestCase(
+            input=item.question,
+            actual_output=prediction,
+            expected_output=item.answer,
+        )
+        evaluation_dataset.add_test_case(test_case)
 
     # Calculate metrics
-    metrics = evaluate(predictions, ground_truth)
-
-    return metrics
+    my_evaluator = Evaluator()
+    my_evaluator.evaluate(evaluation_dataset)
 
 
 def main():
     # parse arguments
-    parser = ArgumentParser()
-    parser.add_argument("--model.endpoint", default="http://localhost:8000/v1/completions")
-    parser.add_argument("--model.name", default="meta-llama/Llama-3.2-1B")
+    parser = ArgumentParser(default_config_files=["./config/default.yaml"])
+    parser.add_argument("--model.endpoint", type=str)
+    parser.add_argument("--model.name", type=str)
 
-    parser.add_argument("--data.path", default="mandarjoshi/trivia_qa")
-    parser.add_argument("--data.name", default="rc.nocontext")
-    parser.add_argument("--data.split", default="validation")
+    parser.add_argument("--data.load.path", type=str)
+    parser.add_argument("--data.load.name", type=str)
+    parser.add_argument("--data.load.split", type=str)
+    parser.add_argument("--data.question_path", type=str)
+    parser.add_argument("--data.answer_path", type=str)
 
-    parser.add_argument("--config", action="config")
     cfg = parser.parse_args()
 
     # run evaluation
