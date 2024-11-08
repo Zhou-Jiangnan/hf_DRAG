@@ -11,6 +11,7 @@ from deepeval.dataset import EvaluationDataset
 from jsonargparse import ArgumentParser
 
 from model.evaluator import Evaluator
+from model.retriever import ContextRetriever
 
 logger = logging.getLogger(__file__)
 
@@ -28,10 +29,13 @@ class RetrievalRequest:
     source_id: str
 
 
-@dataclass
 class Datapoint:
-    question: str
-    answer: str
+    def __init__(self, question: str, answer: str):
+        self.question = question
+        self.answer = answer
+    
+    def __repr__(self):
+        return f"[Question]:{self.question}[Answer]:{self.answer}"
 
 
 class RAGNode:
@@ -48,6 +52,7 @@ class RAGNode:
         self.llm_name = llm_name
         self.confidence_threshold = confidence_threshold
         self.num_retrievals = num_retrievals
+        self.retriever = ContextRetriever()
         self.local_dataset: List[Datapoint] = []
 
     def add_to_local_dataset(self, datapoint: Datapoint):
@@ -123,12 +128,8 @@ class RAGNode:
 
     def retrieve_local_context(self, question: str) -> str:
         """Retrieve relevant context from local dataset"""
-        # TODO:
-        # Simple implementation - could be improved with better similarity search
-        # Random selection for demonstration
-        # In practice, use embedding similarity or other retrieval methods
-        context_datapoint = random.choice(self.local_dataset)
-        return context_datapoint.question + " " + context_datapoint.answer
+        relevant_context = self.retriever.semantic_search(self.local_dataset, question)[0]
+        return str(relevant_context)
 
     def handle_retrieval_request(self, request: RetrievalRequest) -> RAGAnswer:
         """Handle retrieval requests from other nodes"""
