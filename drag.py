@@ -10,7 +10,7 @@ from deepeval.test_case import LLMTestCase
 from deepeval.dataset import EvaluationDataset
 from jsonargparse import ArgumentParser
 
-from evaluator import Evaluator
+from model.evaluator import Evaluator
 
 logger = logging.getLogger(__file__)
 
@@ -250,5 +250,4 @@ def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level="INFO")
     main()
