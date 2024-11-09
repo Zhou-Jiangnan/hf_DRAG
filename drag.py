@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import logging
 import random
 import requests
-from typing import List
+from typing import List, Dict, Optional
 
 from datasets import load_dataset
 from deepeval.test_case import LLMTestCase
@@ -20,13 +20,6 @@ logger = logging.getLogger(__file__)
 class RAGAnswer:
     text: str
     confidence: float
-    source_id: str  # Identifier for the node that generated this answer
-
-
-@dataclass
-class RetrievalRequest:
-    question: str
-    source_id: str
 
 
 class Datapoint:
@@ -41,25 +34,25 @@ class Datapoint:
 class RAGNode:
     def __init__(
             self,
-            node_id: str,
+            node_id: int,
             llm_api_endpoint: str,
             llm_name: str,
             confidence_threshold: float = 0.7,
-            num_retrievals: int = 3
+            num_retrieval_answers: int = 3
     ):
         self.node_id = node_id
         self.llm_api_endpoint = llm_api_endpoint
         self.llm_name = llm_name
         self.confidence_threshold = confidence_threshold
-        self.num_retrievals = num_retrievals
+        self.num_retrieval_answers = num_retrieval_answers
         self.retriever = ContextRetriever()
         self.local_dataset: List[Datapoint] = []
 
     def add_to_local_dataset(self, datapoint: Datapoint):
         """Add a new datapoint to local RAG dataset"""
         self.local_dataset.append(datapoint)
-
-    def llm_post(self, prompt):
+    
+    def execute_llm(self, prompt: str) -> RAGAnswer:
         body_data = {
             "model": self.llm_name,
             "prompt": prompt,
@@ -72,49 +65,7 @@ class RAGNode:
             json=body_data,
         )
         response_text = response.json()["response"]
-        return response_text
 
-    def process_question(self, question: str, peer_nodes: List[str]) -> str:
-        """Process a question using DRAG workflow"""
-        # Generate initial answer
-        local_answer = self.generate_answer(question)
-
-        if local_answer.confidence >= self.confidence_threshold:
-            return local_answer.text
-
-        # Send retrieval requests to peers
-        retrieval_request = RetrievalRequest(question, self.node_id)
-        peer_answers = self.get_peer_answers(retrieval_request, peer_nodes)
-
-        # Combine all answers including local
-        all_answers = [local_answer] + peer_answers
-
-        # Rank answers by confidence and select top k
-        ranked_answers = sorted(
-            all_answers,
-            key=lambda x: x.confidence,
-            reverse=True
-        )
-        selected_answers = ranked_answers[:self.num_retrievals]
-
-        # Generate final answer using selected answers as context
-        final_answer = self.generate_final_answer(question, selected_answers)
-        return final_answer
-
-    def generate_answer(self, question: str) -> RAGAnswer:
-        """Generate answer using local dataset and LLM"""
-        # Find most relevant context from local dataset
-        relevant_context = self.retrieve_local_context(question)
-
-        # Construct prompt with context
-        prompt = f"""
-        Question: {question}
-        Context: {relevant_context}
-        Please provide an answer based on the context above and rate your confidence from 0.0 to 1.0.
-        Respond using JSON with keys: `answer`, `confidence`."""
-
-        # Call LLM API
-        response_text = self.llm_post(prompt)
         # print(f"Debug response_text: {response_text}")
         response_json = json.loads(response_text)
 
@@ -123,56 +74,96 @@ class RAGNode:
         confidence = response_json.get("confidence", 0.0)
         confidence = float(confidence)
         # print(f"Debug [question]: {question} [answer]: {answer}; [confidence]: {confidence}")
+        return RAGAnswer(answer, confidence)
 
-        return RAGAnswer(answer, confidence, self.node_id)
+    def generate_answer(self, question: str, retrieved_answers: Dict[int, RAGAnswer]|None = None) -> RAGAnswer:
+        """Generate answer using local dataset and LLM"""
+        # Find most relevant context from local dataset
+        relevant_context = self.retrieve_local_context(question)
+
+        # Construct prompt with retrieved answers
+        if retrieved_answers is not None:
+            retrieved_context = "\n".join(
+                f"Answer from {node_id} (confidence: {ans.confidence}):"
+                f" {ans.text}"
+                for node_id, ans in retrieved_answers
+            )
+            relevant_context = relevant_context + "\n" + retrieved_context
+
+        # Construct prompt with context
+        prompt = f"""
+        Question:
+        {question}
+
+        Context:
+        {relevant_context}
+
+        Please provide an answer based on the context above and rate your confidence from 0.0 to 1.0.
+        Respond using JSON with keys: `answer`, `confidence`."""
+
+        # Execute LLM
+        rag_answer = self.execute_llm(prompt)
+        return rag_answer
 
     def retrieve_local_context(self, question: str) -> str:
         """Retrieve relevant context from local dataset"""
         relevant_context = self.retriever.semantic_search(self.local_dataset, question)[0]
         return str(relevant_context)
 
-    def handle_retrieval_request(self, request: RetrievalRequest) -> RAGAnswer:
-        """Handle retrieval requests from other nodes"""
-        return self.generate_answer(request.question)
 
-    def get_peer_answers(
-            self,
-            request: RetrievalRequest,
-            peer_nodes: List[str]
-    ) -> List[RAGAnswer]:
-        """Get answers from peer nodes"""
-        # TODO:
-        # In practice, implement actual network communication
-        # Here we simulate peer responses
-        peer_answers = []
-        for peer_id in peer_nodes:
-            # Simulate peer node processing
-            confidence = random.uniform(0.5, 1.0)
-            answer = f"Simulated answer from peer {peer_id}"
-            peer_answers.append(RAGAnswer(answer, confidence, peer_id))
-        return peer_answers
+class DistributedRAGSystem:
+    def __init__(
+            self, 
+            llm_api_endpoint: str, 
+            llm_name: str, 
+            num_nodes: int, 
+            datapoints: List[Datapoint], 
+            confidence_threshold: float
+        ):
 
-    def generate_final_answer(
-            self,
-            question: str,
-            retrieved_answers: List[RAGAnswer]
-    ) -> str:
-        """Generate final answer using retrieved answers as context"""
-        # Construct prompt with retrieved answers
-        answers_context = "\n".join(
-            f"Answer from {ans.source_id} (confidence: {ans.confidence}):"
-            f" {ans.text}"
-            for ans in retrieved_answers
-        )
+        self.confidence_threshold = confidence_threshold
+        # Initialize nodes
+        self.nodes: Dict[int, RAGNode] = {}
+        for node_id in range(num_nodes):
+            self.nodes[node_id] = RAGNode(
+                node_id=node_id, 
+                llm_api_endpoint=llm_api_endpoint, 
+                llm_name=llm_name,
+            )
+        
+        # Initialize data points
+        for i, datapoint in enumerate(datapoints):
+            node_idx = i % num_nodes
+            self.nodes[node_idx].add_to_local_dataset(datapoint)
 
-        prompt = f"""Question: {question}
-        Retrieved answers: {answers_context}
-        Please provide a final answer based on the retrieved answers above."""
+    
+    def query(self, question: str, selected_node_id: Optional[str] = None) -> RAGAnswer:
+        if selected_node_id is None:
+            selected_node_id = random.choice(list(self.nodes.keys()))
+        
+        selected_node = self.nodes[selected_node_id]
 
-        # Call LLM API
-        response_text = self.llm_post(prompt)
+        # Get answer from starting node
+        original_answer = selected_node.generate_answer(question)
 
-        return response_text
+        # If original answer is confident enough, return
+        if original_answer.confidence >= self.confidence_threshold:
+            return original_answer
+
+        # Select random subset of neighbors to retrieval
+        selected_neighbor_ids = random.sample(list(self.nodes.keys()), 3)
+        
+        retrieved_answers: Dict[int, RAGAnswer] = {}
+        
+        # Get answers from selected neighbors
+        for neighbor_id in selected_neighbor_ids:
+            neighbor = self.nodes[neighbor_id]
+            retrieved_answers[neighbor_id] = neighbor.generate_answer(question)
+
+        # TODO: Rank answers by confidence and select top k
+        final_answer = selected_node.generate_answer(question, retrieved_answers)
+        
+        return final_answer
 
 
 def get_dict_val(dict_item, dot_keys):
@@ -184,46 +175,39 @@ def get_dict_val(dict_item, dot_keys):
     return val
 
 
-def run_evaluation(llm_api_endpoint: str, llm_name: str, data_config: dict):
+def run_simulation(llm_api_endpoint: str, llm_name: str, data_config: dict, num_nodes: int = 10):
     """Run evaluation on a HuggingFace dataset"""
     # Load Huggingface dataset
     dataset = load_dataset(**data_config["load"])
+    datapoints: List[Datapoint] = []
 
-    # Initialize nodes, node_0 is the global node with all datapoints
-    global_node = RAGNode("node_0", llm_api_endpoint, llm_name)
-    local_nodes = [
-        RAGNode(f"node_{i}", llm_api_endpoint, llm_name)
-        for i in range(1, 3+1)  # Create 3 nodes for demonstration
-    ]
-
-    # Distribute data among nodes
     # random pick 20 samples for testing
     for i, item in enumerate(dataset.take(20)):
-        node_idx = i % len(local_nodes)
         question = get_dict_val(item, data_config["question_path"])
         answer = get_dict_val(item, data_config["answer_path"])
         datapoint = Datapoint(question, answer)
+        datapoints.append(datapoint)
 
-        # TODO: randomly distribute datapoint
-        global_node.add_to_local_dataset(datapoint)
-        local_nodes[node_idx].add_to_local_dataset(datapoint)
+    # Initialize distributed RAG system
+    drag_system = DistributedRAGSystem(
+        num_nodes=num_nodes, 
+        datapoints=datapoints, 
+        llm_api_endpoint=llm_api_endpoint, 
+        llm_name=llm_name
+    )
 
     # Run evaluation
     evaluation_dataset = EvaluationDataset()
 
-    for item in global_node.local_dataset:
+    for datapoint in datapoints:
         # Each question is processed by a random node
-        node = random.choice(local_nodes)
-        peer_nodes = [n.node_id for n in local_nodes if n.node_id != node.node_id]
-
-        # prompt_input, prediction, and expected_output
-        prediction = node.process_question(item.question, peer_nodes)
+        drag_answer = drag_system.query(datapoint)
 
         # DeepEval test case
         test_case = LLMTestCase(
-            input=item.question,
-            actual_output=prediction,
-            expected_output=item.answer,
+            input=datapoint.question,
+            actual_output=drag_answer.text,
+            expected_output=datapoint.answer,
         )
         evaluation_dataset.add_test_case(test_case)
 
@@ -247,7 +231,7 @@ def main():
     cfg = parser.parse_args()
 
     # run evaluation
-    run_evaluation(cfg.model.endpoint, cfg.model.name, cfg.data.as_dict())
+    run_simulation(cfg.model.endpoint, cfg.model.name, cfg.data.as_dict())
 
 
 if __name__ == "__main__":
