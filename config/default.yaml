@@ -1,5 +1,5 @@
 model:
-  endpoint: http://localhost:11434/api/generate
+  base_url: http://localhost:11434
   name: llama3.2
 data:
   load:  # parameters for datasets.load_dataset()

@@ -12,7 +12,7 @@ Install Python requirements:
 $ python install -r requirements.txt 
 ```
 
-Start [Ollama](https://github.com/ollama/ollama/blob/main/docs/faq.md):
+Start [Ollama](https://github.com/ollama/ollama/blob/main/docs/faq.md) local LLM service:
 
 ```bash
 # start Llama 3.2 - 3B
@@ -23,14 +23,6 @@ $ curl http://localhost:11434/api/generate -d '{"model": "llama3.2"}'
 # start/stop ollama service:
 $ sudo systemctl start ollama
 $ sudo systemctl stop ollama
-```
-
-Initialize DeepEval to use local Ollama model:
-
-```bash
-$ deepeval set-local-model --model-name="llama3.2" --base-url="http://localhost:11434/v1/" --api-key="ollama"
-# To unset the local model:
-$ deepeval unset-local-model
 ```
 
 ## Models

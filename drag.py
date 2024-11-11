@@ -2,13 +2,13 @@ import json
 from dataclasses import dataclass
 import logging
 import random
-import requests
 from typing import List, Dict, Optional
 
 from datasets import load_dataset
 from deepeval.test_case import LLMTestCase
 from deepeval.dataset import EvaluationDataset
 from jsonargparse import ArgumentParser
+from ollama import Client
 
 from model.evaluator import Evaluator
 from model.retriever import ContextRetriever
@@ -22,27 +22,24 @@ class RAGAnswer:
     confidence: float
 
 
+@dataclass
 class Datapoint:
-    def __init__(self, question: str, answer: str):
-        self.question = question
-        self.answer = answer
-    
-    def __repr__(self):
-        return f"[Question]:{self.question}[Answer]:{self.answer}"
+    question: str
+    answer: str
 
 
 class RAGNode:
     def __init__(
             self,
             node_id: int,
-            llm_api_endpoint: str,
+            llm_base_url: str,
             llm_name: str,
             confidence_threshold: float = 0.7,
             num_retrieval_answers: int = 3
     ):
         self.node_id = node_id
-        self.llm_api_endpoint = llm_api_endpoint
         self.llm_name = llm_name
+        self.llm_client = Client(host=llm_base_url)
         self.confidence_threshold = confidence_threshold
         self.num_retrieval_answers = num_retrieval_answers
         self.retriever = ContextRetriever()
@@ -53,18 +50,8 @@ class RAGNode:
         self.local_dataset.append(datapoint)
     
     def execute_llm(self, prompt: str) -> RAGAnswer:
-        body_data = {
-            "model": self.llm_name,
-            "prompt": prompt,
-            "stream": False,
-            "format": "json",
-        }
-
-        response = requests.post(
-            self.llm_api_endpoint,
-            json=body_data,
-        )
-        response_text = response.json()["response"]
+        response = self.llm_client.generate(model=self.llm_name, prompt=prompt, format="json")
+        response_text = response["response"]
 
         # print(f"Debug response_text: {response_text}")
         response_json = json.loads(response_text)
@@ -86,9 +73,10 @@ class RAGNode:
             retrieved_context = "\n".join(
                 f"Answer from {node_id} (confidence: {ans.confidence}):"
                 f" {ans.text}"
-                for node_id, ans in retrieved_answers
+                for node_id, ans in retrieved_answers.items()
             )
             relevant_context = relevant_context + "\n" + retrieved_context
+            # print(f"Debug relevant_context: {relevant_context}")
 
         # Construct prompt with context
         prompt = f"""
@@ -107,14 +95,16 @@ class RAGNode:
 
     def retrieve_local_context(self, question: str) -> str:
         """Retrieve relevant context from local dataset"""
-        relevant_context = self.retriever.semantic_search(self.local_dataset, question)[0]
+        local_sentences = [f"[Question]:{datapoint.question}[Answer]:{datapoint.answer}"
+                           for datapoint in self.local_dataset]
+        relevant_context = self.retriever.semantic_search(local_sentences, question)[0]
         return str(relevant_context)
 
 
 class DistributedRAGSystem:
     def __init__(
             self, 
-            llm_api_endpoint: str, 
+            llm_base_url: str,
             llm_name: str, 
             num_nodes: int, 
             datapoints: List[Datapoint], 
@@ -127,7 +117,7 @@ class DistributedRAGSystem:
         for node_id in range(num_nodes):
             self.nodes[node_id] = RAGNode(
                 node_id=node_id, 
-                llm_api_endpoint=llm_api_endpoint, 
+                llm_base_url=llm_base_url,
                 llm_name=llm_name,
             )
         
@@ -175,7 +165,7 @@ def get_dict_val(dict_item, dot_keys):
     return val
 
 
-def run_simulation(llm_api_endpoint: str, llm_name: str, data_config: dict, num_nodes: int = 10):
+def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_nodes: int = 10):
     """Run evaluation on a HuggingFace dataset"""
     # Load Huggingface dataset
     dataset = load_dataset(**data_config["load"])
@@ -190,10 +180,11 @@ def run_simulation(llm_api_endpoint: str, llm_name: str, data_config: dict, num_
 
     # Initialize distributed RAG system
     drag_system = DistributedRAGSystem(
-        num_nodes=num_nodes, 
-        datapoints=datapoints, 
-        llm_api_endpoint=llm_api_endpoint, 
-        llm_name=llm_name
+        llm_base_url=llm_base_url,
+        llm_name=llm_name,
+        num_nodes=num_nodes,
+        datapoints=datapoints,
+        confidence_threshold=0.9,
     )
 
     # Run evaluation
@@ -201,7 +192,7 @@ def run_simulation(llm_api_endpoint: str, llm_name: str, data_config: dict, num_
 
     for datapoint in datapoints:
         # Each question is processed by a random node
-        drag_answer = drag_system.query(datapoint)
+        drag_answer = drag_system.query(datapoint.question)
 
         # DeepEval test case
         test_case = LLMTestCase(
@@ -212,14 +203,14 @@ def run_simulation(llm_api_endpoint: str, llm_name: str, data_config: dict, num_
         evaluation_dataset.add_test_case(test_case)
 
     # Calculate metrics
-    my_evaluator = Evaluator()
+    my_evaluator = Evaluator(llm_name=llm_name, llm_base_url=llm_base_url)
     my_evaluator.evaluate(evaluation_dataset)
 
 
 def main():
     # parse arguments
     parser = ArgumentParser(default_config_files=["./config/default.yaml"])
-    parser.add_argument("--model.endpoint", type=str)
+    parser.add_argument("--model.base_url", type=str)
     parser.add_argument("--model.name", type=str)
 
     parser.add_argument("--data.load.path", type=str)
@@ -231,7 +222,7 @@ def main():
     cfg = parser.parse_args()
 
     # run evaluation
-    run_simulation(cfg.model.endpoint, cfg.model.name, cfg.data.as_dict())
+    run_simulation(cfg.model.base_url, cfg.model.name, cfg.data.as_dict())
 
 
 if __name__ == "__main__":
