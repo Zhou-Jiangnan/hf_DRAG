@@ -6,9 +6,9 @@ from ollama import Client
 
 
 class CustomEvaluateLLM(DeepEvalBaseLLM):
-    def __init__(self, llm_name, llm_base_url):
-        self.llm_name = llm_name
+    def __init__(self, llm_base_url, llm_name):
         self.llm_client = Client(host=llm_base_url)
+        self.llm_name = llm_name
 
     def load_model(self):
         return self.llm_client
@@ -28,8 +28,8 @@ class Evaluator:
     # DeepEval: LLM Evaluation Metrics
     # https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation
 
-    def __init__(self, llm_name, llm_base_url):
-        self.custom_evaluate_llm = CustomEvaluateLLM(llm_name, llm_base_url=llm_base_url)
+    def __init__(self, llm_base_url, llm_name):
+        self.custom_evaluate_llm = CustomEvaluateLLM(llm_base_url=llm_base_url, llm_name=llm_name)
         self.metrics = self.load_metrics()
 
     def evaluate(self, evaluation_dataset):

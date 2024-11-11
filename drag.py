@@ -203,7 +203,7 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
         evaluation_dataset.add_test_case(test_case)
 
     # Calculate metrics
-    my_evaluator = Evaluator(llm_name=llm_name, llm_base_url=llm_base_url)
+    my_evaluator = Evaluator(llm_base_url=llm_base_url, llm_name=llm_name)
     my_evaluator.evaluate(evaluation_dataset)
 
 
