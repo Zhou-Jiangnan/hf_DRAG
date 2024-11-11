@@ -52,3 +52,18 @@ Use `HF_HUB_CACHE` to configure where repositories from the Hub will be cached l
 ```bash
 $ python drag.py --config="./config/default.yaml"
 ```
+
+## DEBUG
+
+1. invalid JSON
+
+```bash
+ValueError: Evaluation LLM outputted an invalid JSON. Please use a better evaluation model.
+```
+
+Solutions: 
+
+[JSON Confinement for Custom LLMs](https://docs.confident-ai.com/docs/guides-using-custom-llms#json-confinement-for-custom-llms)
+
+[outlines](https://github.com/dottxt-ai/outlines)
+

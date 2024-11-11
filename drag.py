@@ -1,5 +1,4 @@
 import json
-from dataclasses import dataclass
 import logging
 import random
 from typing import List, Dict, Optional
@@ -9,6 +8,8 @@ from deepeval.test_case import LLMTestCase
 from deepeval.dataset import EvaluationDataset
 from jsonargparse import ArgumentParser
 from ollama import Client
+from pydantic import BaseModel
+from tqdm import tqdm
 
 from model.evaluator import Evaluator
 from model.retriever import ContextRetriever
@@ -16,14 +17,12 @@ from model.retriever import ContextRetriever
 logger = logging.getLogger(__file__)
 
 
-@dataclass
-class RAGAnswer:
+class RAGAnswer(BaseModel):
     text: str
     confidence: float
 
 
-@dataclass
-class Datapoint:
+class Datapoint(BaseModel):
     question: str
     answer: str
 
@@ -58,10 +57,11 @@ class RAGNode:
 
         # Parse answer and confidence
         answer = response_json.get("answer", "None")
+        answer = str(answer)
         confidence = response_json.get("confidence", 0.0)
         confidence = float(confidence)
         # print(f"Debug [question]: {question} [answer]: {answer}; [confidence]: {confidence}")
-        return RAGAnswer(answer, confidence)
+        return RAGAnswer(text=answer, confidence=confidence)
 
     def generate_answer(self, question: str, retrieved_answers: Dict[int, RAGAnswer]|None = None) -> RAGAnswer:
         """Generate answer using local dataset and LLM"""
@@ -175,7 +175,7 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
     for i, item in enumerate(dataset.take(20)):
         question = get_dict_val(item, data_config["question_path"])
         answer = get_dict_val(item, data_config["answer_path"])
-        datapoint = Datapoint(question, answer)
+        datapoint = Datapoint(question=str(question), answer=str(answer))
         datapoints.append(datapoint)
 
     # Initialize distributed RAG system
@@ -190,7 +190,7 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
     # Run evaluation
     evaluation_dataset = EvaluationDataset()
 
-    for datapoint in datapoints:
+    for datapoint in tqdm(datapoints, desc=f"Inferencing on {len(datapoints)} test case(s)"):
         # Each question is processed by a random node
         drag_answer = drag_system.query(datapoint.question)
 
@@ -200,6 +200,7 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
             actual_output=drag_answer.text,
             expected_output=datapoint.answer,
         )
+        # print(f"Debug test_case: {test_case}")
         evaluation_dataset.add_test_case(test_case)
 
     # Calculate metrics

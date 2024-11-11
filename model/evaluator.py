@@ -3,10 +3,15 @@ from deepeval.metrics import GEval
 from deepeval.models.base_model import DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCaseParams
 from ollama import Client
+from outlines import generate, models
 
 
 class CustomEvaluateLLM(DeepEvalBaseLLM):
     def __init__(self, llm_base_url, llm_name):
+        # TODO: integrate outlines
+        # https://github.com/dottxt-ai/outlines/pull/1142
+        # https://github.com/dottxt-ai/outlines/issues/1135
+        # models.openai()
         self.llm_client = Client(host=llm_base_url)
         self.llm_name = llm_name
 
@@ -25,15 +30,20 @@ class CustomEvaluateLLM(DeepEvalBaseLLM):
 
 
 class Evaluator:
-    # DeepEval: LLM Evaluation Metrics
-    # https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation
-
     def __init__(self, llm_base_url, llm_name):
+        """
+        DeepEval: LLM Evaluation Metrics
+        https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation
+
+        :param llm_base_url: Ollama client host to connect to, http://localhost:11434 by default
+        :param llm_name: Ollama LLM name
+        """
         self.custom_evaluate_llm = CustomEvaluateLLM(llm_base_url=llm_base_url, llm_name=llm_name)
         self.metrics = self.load_metrics()
 
+
     def evaluate(self, evaluation_dataset):
-        evaluate(evaluation_dataset, self.metrics)
+        evaluate(evaluation_dataset, self.metrics, write_cache=False)
 
     def load_metrics(self):
         metrics = []
