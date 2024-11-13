@@ -38,14 +38,14 @@ Use `HF_HUB_CACHE` to configure where repositories from the Hub will be cached l
 
 ### Dataset Settings
 
-| Dataset   | Repository            | Split        | Remarks |
-|-----------|-----------------------|--------------|---------|
-| TriviaqQA | mandarjoshi/trivia_qa | rc.nocontext |         |
-|           |                       |              |         |
-|           |                       |              |         |
-|           |                       |              |         |
-|           |                       |              |         |
-|           |                       |              |         |
+| Dataset          | Repository                        | Split                     | Remarks |
+|------------------|-----------------------------------|---------------------------|---------|
+| TriviaqQA        | mandarjoshi/trivia_qa             | rc.nocontext - validation |         |
+| NaturalQuestions | lighteval/natural_questions_clean | validation                |         |
+|                  |                                   |                           |         |
+|                  |                                   |                           |         |
+|                  |                                   |                           |         |
+|                  |                                   |                           |         |
 
 ## Startup
 
@@ -55,15 +55,4 @@ $ python drag.py --config="./config/default.yaml"
 
 ## DEBUG
 
-1. invalid JSON
-
-```bash
-ValueError: Evaluation LLM outputted an invalid JSON. Please use a better evaluation model.
-```
-
-Solutions: 
-
-[JSON Confinement for Custom LLMs](https://docs.confident-ai.com/docs/guides-using-custom-llms#json-confinement-for-custom-llms)
-
-[Instructor](https://github.com/instructor-ai/instructor)
 
