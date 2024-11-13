@@ -10,9 +10,9 @@ from ollama import Client
 from pydantic import BaseModel
 from tqdm import tqdm
 
-from csv_logs import CSVLogger
-from model.evaluator import AdvancedQAEvaluator
-from model.retriever import ContextRetriever
+from modules.csv_logs import CSVLogger
+from modules.evaluator import AdvancedQAEvaluator
+from modules.retriever import ContextRetriever
 
 
 class RAGAnswer(BaseModel):
@@ -201,7 +201,7 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
         # Each question is processed by a random node
         drag_answer = drag_system.query(datapoint.question)
 
-        # DeepEval test case
+        # test case
         test_case = Testcase(
             actual_output=drag_answer.text,
             expected_output=datapoint.answer,

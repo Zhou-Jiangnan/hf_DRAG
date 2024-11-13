@@ -3,7 +3,6 @@ jsonargparse~=4.33
 scikit-learn~=1.5
 transformers~=4.46
 torch~=2.4
-deepeval~=1.4
 ollama~=0.3
 numpy~=1.26
 sentence-transformers~=3.2
