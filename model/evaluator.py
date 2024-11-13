@@ -1,79 +1,212 @@
-from deepeval import evaluate
-from deepeval.metrics import GEval
-from deepeval.models.base_model import DeepEvalBaseLLM
-from deepeval.test_case import LLMTestCaseParams
-import instructor
-from openai import OpenAI
-from pydantic import BaseModel
+from collections import Counter
+import re
+from typing import List, Dict
+
+import Levenshtein
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from nltk.tokenize import word_tokenize
+import numpy as np
+from rouge_score import rouge_scorer
+from sentence_transformers import SentenceTransformer
 
 
-class CustomEvaluateLLM(DeepEvalBaseLLM):
-    def __init__(self, llm_base_url, llm_name):
-        # Structured Outputs with Ollama: https://python.useinstructor.com/hub/ollama/
-        self.client = instructor.from_openai(
-            OpenAI(
-                base_url=llm_base_url + "/v1",
-                api_key="ollama",  # required, but unused
-            ),
-            mode=instructor.Mode.JSON,
+class AdvancedQAEvaluator:
+    def __init__(self):
+        """Initialize the evaluator with necessary models."""
+        # Initialize ROUGE scorer
+        self.rouge_scorer = rouge_scorer.RougeScorer(
+            ['rouge1', 'rouge2', 'rougeL'], use_stemmer=True
         )
-        self.llm_name = llm_name
+        # Initialize semantic similarity model
+        self.semantic_model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
 
-    def load_model(self):
-        return self.client
+    def normalize_text(self, text: str) -> str:
+        """Normalize text by removing articles, punctuation, and extra whitespace."""
+        if not isinstance(text, str):
+            text = str(text)
+        text = text.lower()
+        text = re.sub(r'\b(a|an|the)\b', ' ', text)
+        text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
+        text = ' '.join(text.split())
+        return text
 
-    def generate(self, prompt: str, schema: BaseModel) -> BaseModel:
-        resp = self.client.chat.completions.create(
-            model=self.llm_name,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-            response_model=schema,
+    def get_tokens(self, text: str) -> List[str]:
+        """Get normalized tokens from text."""
+        return word_tokenize(self.normalize_text(text))
+
+    def calculate_basic_metrics(self, prediction: str, reference: str) -> Dict[str, float]:
+        """Calculate basic metrics (EM, F1, precision, recall)."""
+        pred_tokens = self.get_tokens(prediction)
+        ref_tokens = self.get_tokens(reference)
+
+        # Exact match
+        em = int(self.normalize_text(prediction) == self.normalize_text(reference))
+
+        if len(pred_tokens) == 0 or len(ref_tokens) == 0:
+            return {
+                "exact_match": em,
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0
+            }
+
+        # Token overlap
+        common = Counter(pred_tokens) & Counter(ref_tokens)
+        num_same = sum(common.values())
+
+        precision = num_same / len(pred_tokens) if pred_tokens else 0
+        recall = num_same / len(ref_tokens) if ref_tokens else 0
+        f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+
+        return {
+            "exact_match": em,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1
+        }
+
+    def calculate_bleu(self, prediction: str, reference: str) -> float:
+        """Calculate BLEU score with smoothing."""
+        pred_tokens = self.get_tokens(prediction)
+        ref_tokens = [self.get_tokens(reference)]
+
+        smoothing = SmoothingFunction().method1
+        try:
+            return sentence_bleu(ref_tokens, pred_tokens, smoothing_function=smoothing)
+        except:
+            return 0.0
+
+    def calculate_rouge(self, prediction: str, reference: str) -> Dict[str, float]:
+        """Calculate ROUGE scores."""
+        scores = self.rouge_scorer.score(reference, prediction)
+        return {
+            'rouge1': scores['rouge1'].fmeasure,
+            'rouge2': scores['rouge2'].fmeasure,
+            'rougeL': scores['rougeL'].fmeasure
+        }
+
+    def calculate_semantic_similarity(self, prediction: str, reference: str) -> float:
+        """Calculate semantic similarity using sentence embeddings."""
+        # Encode sentences
+        pred_embedding = self.semantic_model.encode([prediction])[0]
+        ref_embedding = self.semantic_model.encode([reference])[0]
+
+        # Calculate cosine similarity
+        similarity = np.dot(pred_embedding, ref_embedding) / (
+                np.linalg.norm(pred_embedding) * np.linalg.norm(ref_embedding)
         )
-        return resp
+        return float(similarity)
 
-    async def a_generate(self, prompt: str, schema: BaseModel) -> BaseModel:
-        return self.generate(prompt, schema)
+    def calculate_length_metrics(self, prediction: str, reference: str) -> Dict[str, float]:
+        """Calculate length-based metrics."""
+        pred_tokens = self.get_tokens(prediction)
+        ref_tokens = self.get_tokens(reference)
 
-    def get_model_name(self):
-        return self.llm_name
+        length_ratio = len(pred_tokens) / len(ref_tokens) if ref_tokens else 0
+        length_difference = abs(len(pred_tokens) - len(ref_tokens))
 
+        return {
+            "length_ratio": length_ratio,
+            "length_difference": length_difference
+        }
 
-class Evaluator:
-    def __init__(self, llm_base_url, llm_name):
+    def calculate_edit_distance(self, prediction: str, reference: str) -> Dict[str, float]:
+        """Calculate Levenshtein distance and normalized score."""
+        distance = Levenshtein.distance(prediction, reference)
+        max_len = max(len(prediction), len(reference))
+        normalized_distance = 1 - (distance / max_len) if max_len > 0 else 0
+
+        return {
+            "edit_distance": distance,
+            "normalized_edit_distance": normalized_distance
+        }
+
+    def calculate_ngram_overlap(self, prediction: str, reference: str, n: int = 2) -> float:
+        """Calculate n-gram overlap between prediction and reference."""
+
+        def get_ngrams(tokens: List[str], n: int) -> set:
+            return set(' '.join(tokens[i:i + n]) for i in range(len(tokens) - n + 1))
+
+        pred_tokens = self.get_tokens(prediction)
+        ref_tokens = self.get_tokens(reference)
+
+        if len(pred_tokens) < n or len(ref_tokens) < n:
+            return 0.0
+
+        pred_ngrams = get_ngrams(pred_tokens, n)
+        ref_ngrams = get_ngrams(ref_tokens, n)
+
+        overlap = len(pred_ngrams & ref_ngrams)
+        total = len(pred_ngrams | ref_ngrams)
+
+        return overlap / total if total > 0 else 0.0
+
+    def evaluate(self, test_cases) -> Dict[str, float]:
         """
-        DeepEval: LLM Evaluation Metrics
-        https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation
+        Evaluate predictions against references using multiple metrics.
 
-        :param llm_base_url: Ollama client host to connect to, http://localhost:11434 by default
-        :param llm_name: Ollama LLM name
+        Args:
+            test_cases: List[Testcase], List of test cases
+
+        Returns:
+            Dictionary containing all evaluation metrics
         """
-        self.custom_evaluate_llm = CustomEvaluateLLM(llm_base_url=llm_base_url, llm_name=llm_name)
-        self.metrics = self.load_metrics()
+        # Initialize containers for each metric
+        metrics = {
+            'exact_match': [], 'precision': [], 'recall': [], 'f1': [],
+            'bleu': [], 'rouge1': [], 'rouge2': [], 'rougeL': [],
+            'semantic_similarity': [], 'length_ratio': [], 'length_difference': [],
+            'edit_distance': [], 'normalized_edit_distance': [],
+            'bigram_overlap': [], 'trigram_overlap': []
+        }
 
+        # Calculate metrics for each prediction-reference pair
+        for test_case in test_cases:
+            # Basic metrics
+            basic = self.calculate_basic_metrics(test_case.actual_output, test_case.expected_output)
+            for k, v in basic.items():
+                metrics[k].append(v)
 
-    def evaluate(self, evaluation_dataset):
-        evaluate(evaluation_dataset, self.metrics, run_async=False, write_cache=False)
+            # BLEU
+            metrics['bleu'].append(self.calculate_bleu(test_case.actual_output, test_case.expected_output))
 
-    def load_metrics(self):
-        metrics = []
+            # ROUGE scores
+            rouge = self.calculate_rouge(test_case.actual_output, test_case.expected_output)
+            for k, v in rouge.items():
+                metrics[k].append(v)
 
-        # GEval: uses LLMs to evaluate LLM outputs (aka. LLM-Evals)
-        # https://arxiv.org/abs/2303.16634
-        # Liu, Yang, Dan Iter, Yichong Xu, Shuohang Wang, Ruochen Xu, and Chenguang Zhu.
-        # "G-eval: Nlg evaluation using gpt-4 with better human alignment."
-        # arXiv preprint arXiv:2303.16634 (2023).
-        metric = GEval(
-            name="Correctness",
-            criteria="Correctness - determine if the actual output is correct according to the expected output.",
-            evaluation_params=[
-                LLMTestCaseParams.ACTUAL_OUTPUT,
-                LLMTestCaseParams.EXPECTED_OUTPUT
-            ],
-            model=self.custom_evaluate_llm,
-        )
-        metrics.append(metric)
-        return metrics
+            # Semantic similarity
+            metrics['semantic_similarity'].append(
+                self.calculate_semantic_similarity(test_case.actual_output, test_case.expected_output)
+            )
+
+            # Length metrics
+            length = self.calculate_length_metrics(test_case.actual_output, test_case.expected_output)
+            for k, v in length.items():
+                metrics[k].append(v)
+
+            # Edit distance
+            edit = self.calculate_edit_distance(test_case.actual_output, test_case.expected_output)
+            for k, v in edit.items():
+                metrics[k].append(v)
+
+            # N-gram overlap
+            metrics['bigram_overlap'].append(
+                self.calculate_ngram_overlap(test_case.actual_output, test_case.expected_output, n=2)
+            )
+            metrics['trigram_overlap'].append(
+                self.calculate_ngram_overlap(test_case.actual_output, test_case.expected_output, n=3)
+            )
+
+        # Calculate means and convert to percentages where appropriate
+        results = {}
+        for metric, values in metrics.items():
+            if metric in ['exact_match', 'precision', 'recall', 'f1',
+                          'bleu', 'rouge1', 'rouge2', 'rougeL',
+                          'semantic_similarity', 'normalized_edit_distance',
+                          'bigram_overlap', 'trigram_overlap']:
+                results[metric] = np.mean(values) * 100
+            else:
+                results[metric] = np.mean(values)
+
+        return results

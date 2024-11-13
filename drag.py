@@ -4,14 +4,12 @@ import random
 from typing import List, Dict, Optional
 
 from datasets import load_dataset
-from deepeval.test_case import LLMTestCase
-from deepeval.dataset import EvaluationDataset
 from jsonargparse import ArgumentParser
 from ollama import Client
 from pydantic import BaseModel
 from tqdm import tqdm
 
-from model.evaluator import Evaluator
+from model.evaluator import AdvancedQAEvaluator
 from model.retriever import ContextRetriever
 
 logger = logging.getLogger(__file__)
@@ -25,6 +23,11 @@ class RAGAnswer(BaseModel):
 class Datapoint(BaseModel):
     question: str
     answer: str
+
+
+class Testcase(BaseModel):
+    actual_output: str
+    expected_output: str
 
 
 class RAGNode:
@@ -188,24 +191,30 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
     )
 
     # Run evaluation
-    evaluation_dataset = EvaluationDataset()
+    test_cases = []
 
     for datapoint in tqdm(datapoints, desc=f"Inferencing on {len(datapoints)} test case(s)"):
         # Each question is processed by a random node
         drag_answer = drag_system.query(datapoint.question)
 
         # DeepEval test case
-        test_case = LLMTestCase(
-            input=datapoint.question,
+        test_case = Testcase(
             actual_output=drag_answer.text,
             expected_output=datapoint.answer,
         )
         # print(f"Debug test_case: {test_case}")
-        evaluation_dataset.add_test_case(test_case)
+        test_cases.append(test_case)
 
     # Calculate metrics
-    my_evaluator = Evaluator(llm_base_url=llm_base_url, llm_name=llm_name)
-    my_evaluator.evaluate(evaluation_dataset)
+    # qa_evaluator = QAEvaluator()
+    qa_evaluator = AdvancedQAEvaluator()
+    results = qa_evaluator.evaluate(test_cases)
+
+    # Print results
+    print("\nEvaluation Results:")
+    print("-" * 20)
+    for metric, value in results.items():
+        print(f"{metric}: {value:.2f}%")
 
 
 def main():
