@@ -2,28 +2,41 @@ from deepeval import evaluate
 from deepeval.metrics import GEval
 from deepeval.models.base_model import DeepEvalBaseLLM
 from deepeval.test_case import LLMTestCaseParams
-from ollama import Client
-from outlines import generate, models
+import instructor
+from openai import OpenAI
+from pydantic import BaseModel
 
 
 class CustomEvaluateLLM(DeepEvalBaseLLM):
     def __init__(self, llm_base_url, llm_name):
-        # TODO: integrate outlines
-        # https://github.com/dottxt-ai/outlines/pull/1142
-        # https://github.com/dottxt-ai/outlines/issues/1135
-        # models.openai()
-        self.llm_client = Client(host=llm_base_url)
+        # Structured Outputs with Ollama: https://python.useinstructor.com/hub/ollama/
+        self.client = instructor.from_openai(
+            OpenAI(
+                base_url=llm_base_url + "/v1",
+                api_key="ollama",  # required, but unused
+            ),
+            mode=instructor.Mode.JSON,
+        )
         self.llm_name = llm_name
 
     def load_model(self):
-        return self.llm_client
+        return self.client
 
-    def generate(self, prompt: str) -> str:
-        response = self.llm_client.generate(model=self.llm_name, prompt=prompt)
-        return response["response"]
+    def generate(self, prompt: str, schema: BaseModel) -> BaseModel:
+        resp = self.client.chat.completions.create(
+            model=self.llm_name,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            response_model=schema,
+        )
+        return resp
 
-    async def a_generate(self, prompt: str) -> str:
-        return self.generate(prompt)
+    async def a_generate(self, prompt: str, schema: BaseModel) -> BaseModel:
+        return self.generate(prompt, schema)
 
     def get_model_name(self):
         return self.llm_name
@@ -43,7 +56,7 @@ class Evaluator:
 
 
     def evaluate(self, evaluation_dataset):
-        evaluate(evaluation_dataset, self.metrics, write_cache=False)
+        evaluate(evaluation_dataset, self.metrics, run_async=False, write_cache=False)
 
     def load_metrics(self):
         metrics = []

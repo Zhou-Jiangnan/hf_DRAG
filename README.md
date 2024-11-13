@@ -65,5 +65,5 @@ Solutions:
 
 [JSON Confinement for Custom LLMs](https://docs.confident-ai.com/docs/guides-using-custom-llms#json-confinement-for-custom-llms)
 
-[outlines](https://github.com/dottxt-ai/outlines)
+[Instructor](https://github.com/instructor-ai/instructor)
 

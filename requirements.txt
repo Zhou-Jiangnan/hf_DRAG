@@ -9,5 +9,6 @@ ollama~=0.3
 numpy~=1.26
 sentence-transformers~=3.2
 tqdm~=4.66
-outlines~=0.1
 pydantic~=2.9
+instructor~=1.6
+openai~=1.54
