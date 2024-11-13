@@ -1,10 +1,11 @@
 import json
-import logging
 import random
+import sys
 from typing import List, Dict, Optional
 
 from datasets import load_dataset
 from jsonargparse import ArgumentParser
+from loguru import logger
 from ollama import Client
 from pydantic import BaseModel
 from tqdm import tqdm
@@ -12,8 +13,6 @@ from tqdm import tqdm
 from csv_logs import CSVLogger
 from model.evaluator import AdvancedQAEvaluator
 from model.retriever import ContextRetriever
-
-logger = logging.getLogger(__file__)
 
 
 class RAGAnswer(BaseModel):
@@ -235,9 +234,9 @@ def main():
 
     cfg = parser.parse_args()
 
-    # logger.setLevel(cfg.log_level)
-    logger.setLevel(logging.DEBUG)
-    # logging.basicConfig(level=cfg.log_level)
+    # Changing the level of the logger
+    logger.remove()  # Remove default handler.
+    logger.add(sys.stderr, level=cfg.log_level)
 
     # run evaluation
     run_simulation(cfg.model.base_url, cfg.model.name, cfg.data.as_dict())

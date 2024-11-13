@@ -12,3 +12,4 @@ pydantic~=2.9
 levenshtein~=0.26
 nltk~=3.9
 rouge-score~=0.1
+loguru~=0.7

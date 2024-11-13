@@ -1,12 +1,9 @@
 import csv
-import logging
 import os
-from argparse import Namespace
 from typing import Any, Dict, List, Optional, Set, Union
 
+from loguru import logger
 from torch import Tensor
-
-log = logging.getLogger(__name__)
 
 
 class CSVLogger:
@@ -16,7 +13,7 @@ class CSVLogger:
 
     Args:
         root_dir: The root directory in which all your experiments with different names and versions will be stored.
-        name: Experiment name. Defaults to ``'lightning_logs'``. If name is ``None``, logs
+        name: Experiment name. Defaults to ``'logs'``. If name is ``None``, logs
             (versions) will be stored to the save dir directly.
         version: Experiment version. If version is not specified the logger inspects the save
             directory for existing versions, then automatically assigns the next available version.
@@ -103,9 +100,6 @@ class CSVLogger:
         os.makedirs(self._root_dir, exist_ok=True)
         self._experiment = _ExperimentWriter(log_dir=self.log_dir)
         return self._experiment
-
-    def log_hyperparams(self, params: Union[Dict[str, Any], Namespace]) -> None:
-        raise NotImplementedError("The `CSVLogger` does not yet support logging hyperparameters.")
 
     def log_metrics(  # type: ignore[override]
         self, metrics: Dict[str, Union[Tensor, float]]
@@ -227,7 +221,7 @@ class _ExperimentWriter:
 
     def _check_log_dir_exists(self) -> None:
         if os.path.exists(self.log_dir) and os.listdir(self.log_dir):
-            log.warning(
+            logger.warning(
                 f"Experiment logs directory {self.log_dir} exists and is not empty."
                 " Previous log files in this directory will be deleted when the new ones are saved!"
             )
