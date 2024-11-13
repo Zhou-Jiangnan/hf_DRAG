@@ -1,8 +1,12 @@
 # MacOS
 .DS_Store
 
-# DeepEval Config
-*.deepeval*
+# log dir
+logs/
+
+# output dir
+outputs/
+runs/
 
 # media files
 *.mp4
@@ -10,10 +14,6 @@
 
 # model files
 *.pt
-
-# output dir
-outputs/
-runs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

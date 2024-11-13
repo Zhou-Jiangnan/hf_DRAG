@@ -9,6 +9,7 @@ from ollama import Client
 from pydantic import BaseModel
 from tqdm import tqdm
 
+from csv_logs import CSVLogger
 from model.evaluator import AdvancedQAEvaluator
 from model.retriever import ContextRetriever
 
@@ -55,7 +56,7 @@ class RAGNode:
         response = self.llm_client.generate(model=self.llm_name, prompt=prompt, format="json")
         response_text = response["response"]
 
-        # print(f"Debug response_text: {response_text}")
+        # logger.debug(f"response_text: {response_text}")
         response_json = json.loads(response_text)
 
         # Parse answer and confidence
@@ -63,7 +64,7 @@ class RAGNode:
         answer = str(answer)
         confidence = response_json.get("confidence", 0.0)
         confidence = float(confidence)
-        # print(f"Debug [question]: {question} [answer]: {answer}; [confidence]: {confidence}")
+        # logger.debug(f"[question]: {question} [answer]: {answer}; [confidence]: {confidence}")
         return RAGAnswer(text=answer, confidence=confidence)
 
     def generate_answer(self, question: str, retrieved_answers: Dict[int, RAGAnswer]|None = None) -> RAGAnswer:
@@ -79,7 +80,7 @@ class RAGNode:
                 for node_id, ans in retrieved_answers.items()
             )
             relevant_context = relevant_context + "\n" + retrieved_context
-            # print(f"Debug relevant_context: {relevant_context}")
+            # logger.debug(f"relevant_context: {relevant_context}")
 
         # Construct prompt with context
         prompt = f"""
@@ -141,10 +142,12 @@ class DistributedRAGSystem:
 
         # If original answer is confident enough, return
         if original_answer.confidence >= self.confidence_threshold:
+            logger.debug(f"confident enough for question: {question}, return: {original_answer}")
             return original_answer
 
         # Select random subset of neighbors to retrieval
         selected_neighbor_ids = random.sample(list(self.nodes.keys()), 3)
+        logger.debug(f"not confident for question: {question}, fetch answers from neighbors {selected_neighbor_ids}")
         
         retrieved_answers: Dict[int, RAGAnswer] = {}
         
@@ -154,7 +157,9 @@ class DistributedRAGSystem:
             retrieved_answers[neighbor_id] = neighbor.generate_answer(question)
 
         # TODO: Rank answers by confidence and select top k
+        logger.debug(f"fetched answers from neighbors {selected_neighbor_ids}:\n {retrieved_answers}")
         final_answer = selected_node.generate_answer(question, retrieved_answers)
+        logger.debug(f"after aggregating answers from neighbors, final answer: {final_answer}")
         
         return final_answer
 
@@ -202,24 +207,23 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
             actual_output=drag_answer.text,
             expected_output=datapoint.answer,
         )
-        # print(f"Debug test_case: {test_case}")
+        # logger.debug(f"test_case: {test_case}")
         test_cases.append(test_case)
 
     # Calculate metrics
-    # qa_evaluator = QAEvaluator()
     qa_evaluator = AdvancedQAEvaluator()
     results = qa_evaluator.evaluate(test_cases)
 
-    # Print results
-    print("\nEvaluation Results:")
-    print("-" * 20)
-    for metric, value in results.items():
-        print(f"{metric}: {value:.2f}%")
+    logger.info(f"Evaluation Results:\n{json.dumps(results)}")
+    csv_logger = CSVLogger()
+    csv_logger.log_metrics(results)
 
 
 def main():
     # parse arguments
     parser = ArgumentParser(default_config_files=["./config/default.yaml"])
+    parser.add_argument('--log_level', type=str, help='DEBUG, INFO, WARNING, ERROR, or CRITICAL')
+
     parser.add_argument("--model.base_url", type=str)
     parser.add_argument("--model.name", type=str)
 
@@ -230,6 +234,10 @@ def main():
     parser.add_argument("--data.answer_path", type=str)
 
     cfg = parser.parse_args()
+
+    # logger.setLevel(cfg.log_level)
+    logger.setLevel(logging.DEBUG)
+    # logging.basicConfig(level=cfg.log_level)
 
     # run evaluation
     run_simulation(cfg.model.base_url, cfg.model.name, cfg.data.as_dict())
