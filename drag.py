@@ -7,27 +7,12 @@ from datasets import load_dataset
 from jsonargparse import ArgumentParser
 from loguru import logger
 from ollama import Client
-from pydantic import BaseModel
 from tqdm import tqdm
 
 from modules.csv_logs import CSVLogger
+from modules.data_types import Datapoint, RAGAnswer, Testcase
 from modules.evaluator import AdvancedQAEvaluator
 from modules.retriever import ContextRetriever
-
-
-class RAGAnswer(BaseModel):
-    text: str
-    confidence: float
-
-
-class Datapoint(BaseModel):
-    question: str
-    answer: str
-
-
-class Testcase(BaseModel):
-    actual_output: str
-    expected_output: str
 
 
 class RAGNode:
@@ -130,7 +115,18 @@ class DistributedRAGSystem:
             self.nodes[node_idx].add_to_local_dataset(datapoint)
 
     
-    def query(self, question: str, selected_node_id: Optional[str] = None) -> RAGAnswer:
+    def query(
+            self, question: str, selected_node_id: Optional[int] = None
+    ) -> (RAGAnswer, bool, Dict[int, RAGAnswer]):
+        """
+        Query a specific question on a certain node in the cluster.
+
+        Args:
+            question: str, the question to ask
+            selected_node_id: Optional[int]: which node to ask question
+        Returns:
+            Tuple(RAGAnswer, bool, Dict[int, RAGAnswer]): final answer, is_retrieval_answer, and retrieval_answers
+        """
         if selected_node_id is None:
             selected_node_id = random.choice(list(self.nodes.keys()))
         
@@ -142,25 +138,25 @@ class DistributedRAGSystem:
         # If original answer is confident enough, return
         if original_answer.confidence >= self.confidence_threshold:
             logger.debug(f"confident enough for question: {question}, return: {original_answer}")
-            return original_answer
+            return original_answer, False, {}
 
         # Select random subset of neighbors to retrieval
         selected_neighbor_ids = random.sample(list(self.nodes.keys()), 3)
         logger.debug(f"not confident for question: {question}, fetch answers from neighbors {selected_neighbor_ids}")
         
-        retrieved_answers: Dict[int, RAGAnswer] = {}
+        retrieval_answers: Dict[int, RAGAnswer] = {}
         
         # Get answers from selected neighbors
         for neighbor_id in selected_neighbor_ids:
             neighbor = self.nodes[neighbor_id]
-            retrieved_answers[neighbor_id] = neighbor.generate_answer(question)
+            retrieval_answers[neighbor_id] = neighbor.generate_answer(question)
 
         # TODO: Rank answers by confidence and select top k
-        logger.debug(f"fetched answers from neighbors {selected_neighbor_ids}:\n {retrieved_answers}")
-        final_answer = selected_node.generate_answer(question, retrieved_answers)
+        logger.debug(f"fetched answers from neighbors {selected_neighbor_ids}:\n {retrieval_answers}")
+        final_answer = selected_node.generate_answer(question, retrieval_answers)
         logger.debug(f"after aggregating answers from neighbors, final answer: {final_answer}")
         
-        return final_answer
+        return final_answer, True, retrieval_answers
 
 
 def get_dict_val(dict_item, dot_keys):
@@ -199,12 +195,16 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
 
     for datapoint in tqdm(datapoints, desc=f"Inferencing on {len(datapoints)} test case(s)"):
         # Each question is processed by a random node
-        drag_answer = drag_system.query(datapoint.question)
+        drag_answer, is_retrieval_answer, retrieval_answers = drag_system.query(datapoint.question)
 
         # test case
         test_case = Testcase(
-            actual_output=drag_answer.text,
+            question=datapoint.question,
             expected_output=datapoint.answer,
+            actual_output=drag_answer.text,
+            confidence=drag_answer.confidence,
+            is_retrieval_answer=is_retrieval_answer,
+            retrieval_answers=retrieval_answers,
         )
         # logger.debug(f"test_case: {test_case}")
         test_cases.append(test_case)
@@ -213,6 +213,8 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
     qa_evaluator = AdvancedQAEvaluator()
     results = qa_evaluator.evaluate(test_cases)
 
+    # log results
+    # TODO: log test cases
     logger.info(f"Evaluation Results:\n{json.dumps(results)}")
     csv_logger = CSVLogger()
     csv_logger.log_metrics(results)

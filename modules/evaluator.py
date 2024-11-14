@@ -9,6 +9,8 @@ import numpy as np
 from rouge_score import rouge_scorer
 from sentence_transformers import SentenceTransformer
 
+from modules.data_types import Testcase
+
 
 class AdvancedQAEvaluator:
     def __init__(self):
@@ -142,7 +144,7 @@ class AdvancedQAEvaluator:
 
         return overlap / total if total > 0 else 0.0
 
-    def evaluate(self, test_cases) -> Dict[str, float]:
+    def evaluate(self, test_cases: List[Testcase]) -> Dict[str, float]:
         """
         Evaluate predictions against references using multiple metrics.
 
@@ -158,7 +160,7 @@ class AdvancedQAEvaluator:
             'bleu': [], 'rouge1': [], 'rouge2': [], 'rougeL': [],
             'semantic_similarity': [], 'length_ratio': [], 'length_difference': [],
             'edit_distance': [], 'normalized_edit_distance': [],
-            'bigram_overlap': [], 'trigram_overlap': []
+            'bigram_overlap': [], 'trigram_overlap': [], 'retrieval_rate': [],
         }
 
         # Calculate metrics for each prediction-reference pair
@@ -199,13 +201,18 @@ class AdvancedQAEvaluator:
                 self.calculate_ngram_overlap(test_case.actual_output, test_case.expected_output, n=3)
             )
 
+            # Retrieval Rate
+            metrics['retrieval_rate'].append(
+                test_case.is_retrieval_answer * 1
+            )
+
         # Calculate means and convert to percentages where appropriate
         results = {}
         for metric, values in metrics.items():
             if metric in ['exact_match', 'precision', 'recall', 'f1',
                           'bleu', 'rouge1', 'rouge2', 'rougeL',
                           'semantic_similarity', 'normalized_edit_distance',
-                          'bigram_overlap', 'trigram_overlap']:
+                          'bigram_overlap', 'trigram_overlap', 'retrieval_rate']:
                 results[metric] = np.mean(values) * 100
             else:
                 results[metric] = np.mean(values)
