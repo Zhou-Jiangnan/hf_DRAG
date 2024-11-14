@@ -13,48 +13,35 @@ class CSVLogger:
 
     Args:
         root_dir: The root directory in which all your experiments with different names and versions will be stored.
-        name: Experiment name. Defaults to ``'logs'``. If name is ``None``, logs
+        log_dir_name: Log directory name. Defaults to ``'logs'``. If name is ``None``, logs
             (versions) will be stored to the save dir directly.
         version: Experiment version. If version is not specified the logger inspects the save
             directory for existing versions, then automatically assigns the next available version.
             If the version is specified, and the directory already contains a metrics file for that version, it will be
             overwritten.
-        prefix: A string to put at the beginning of metric keys.
 
     Example::
 
-        logger = CSVLogger("path/to/logs/root", name="my_model")
-        logger.log_metrics({"loss": 0.235, "acc": 0.75})
-        logger.finalize()
+        csv_logger = CSVLogger("path/to/logs/root")
+        metrics_logger = csv_logger.logger("metrics")
+        metrics_logger.log({"loss": 0.235, "acc": 0.75})
+        metrics_logger.save()
 
     """
-
-    LOGGER_JOIN_CHAR = "-"
 
     def __init__(
         self,
         root_dir: str = "./",
-        name: Optional[str] = "logs",
+        log_dir_name: str = "logs",
         version: Optional[Union[int, str]] = None,
-        prefix: str = "",
     ):
         super().__init__()
         root_dir = os.fspath(root_dir)
         self._root_dir = root_dir
-        self._name = name or ""
+        self._log_dir_name = log_dir_name
         self._version = version
-        self._prefix = prefix
-        self._experiment: Optional[_ExperimentWriter] = None
-
-    @property
-    def name(self) -> str:
-        """Gets the name of the experiment.
-
-        Returns:
-            The name of the experiment.
-
-        """
-        return self._name
+        self._experiment: Optional[_CSVWriter] = None
+        self._loggers: Dict[str, _CSVWriter] = {}
 
     @property
     def version(self) -> Union[int, str]:
@@ -69,11 +56,6 @@ class CSVLogger:
         return self._version
 
     @property
-    def root_dir(self) -> str:
-        """Gets the save directory where the versioned CSV experiments are saved."""
-        return self._root_dir
-
-    @property
     def log_dir(self) -> str:
         """The log directory for this run.
 
@@ -83,36 +65,19 @@ class CSVLogger:
         """
         # create a pseudo standard path
         version = self.version if isinstance(self.version, str) else f"version_{self.version}"
-        return os.path.join(self._root_dir, self.name, version)
+        return os.path.join(self._root_dir, self._log_dir_name, version)
 
-    @property
-    def experiment(self) -> "_ExperimentWriter":
-        """Actual ExperimentWriter object. To use ExperimentWriter features anywhere in your code, do the following.
-
-        Example::
-
-            self.logger.experiment.some_experiment_writer_function()
-
-        """
-        if self._experiment is not None:
-            return self._experiment
+    def logger(self, logger_name: str):
+        """Actual CSVWriter object."""
+        if logger_name in self._loggers:
+            return self._loggers[logger_name]
 
         os.makedirs(self._root_dir, exist_ok=True)
-        self._experiment = _ExperimentWriter(log_dir=self.log_dir)
-        return self._experiment
-
-    def log_metrics(  # type: ignore[override]
-        self, metrics: Dict[str, Union[Tensor, float]]
-    ) -> None:
-        metrics = self._add_prefix(metrics, self._prefix, self.LOGGER_JOIN_CHAR)
-        self.experiment.log_metrics(metrics)
-        self.save()
-
-    def save(self) -> None:
-        self.experiment.save()
+        self._loggers[logger_name] = _CSVWriter(log_dir=self.log_dir, logger_name=logger_name)
+        return self._loggers[logger_name]
 
     def _get_next_version(self) -> int:
-        versions_root = os.path.join(self._root_dir, self.name)
+        versions_root = os.path.join(self._root_dir, self._log_dir_name)
 
         if not os.path.isdir(versions_root):
             return 0
@@ -131,54 +96,36 @@ class CSVLogger:
 
         return max(existing_versions) + 1
 
-    def _add_prefix(
-            self, metrics: Dict[str, Union[Tensor, float]], prefix: str, separator: str
-    ) -> Dict[str, Union[Tensor, float]]:
-        """Insert prefix before each key in a dict, separated by the separator.
 
-        Args:
-            metrics: Dictionary with metric names as keys and measured quantities as values
-            prefix: Prefix to insert before each key
-            separator: Separates prefix and original key name
-
-        Returns:
-            Dictionary with prefix and separator inserted before each key
-
-        """
-        if not prefix:
-            return metrics
-        return {f"{prefix}{separator}{k}": v for k, v in metrics.items()}
-
-
-class _ExperimentWriter:
-    r"""Experiment writer for CSVLogger.
+class _CSVWriter:
+    r"""CSV writer for CSVLogger.
 
     Args:
-        log_dir: Directory for the experiment logs
+        log_dir: Directory for the logs
+        logger_name: Name of the logger
 
     """
 
-    NAME_METRICS_FILE = "metrics.csv"
-
-    def __init__(self, log_dir: str) -> None:
+    def __init__(self, log_dir: str, logger_name: str="metrics") -> None:
         self.metrics: List[Dict[str, float]] = []
         self.metrics_keys: List[str] = []
 
         self.log_dir = log_dir
-        self.metrics_file_path = os.path.join(self.log_dir, self.NAME_METRICS_FILE)
+        self.log_file_name = logger_name + ".csv"
+        self.metrics_file_path = os.path.join(self.log_dir, self.log_file_name)
 
         self._check_log_dir_exists()
         os.makedirs(self.log_dir, exist_ok=True)
 
-    def log_metrics(self, metrics_dict: Dict[str, float]) -> None:
-        """Record metrics."""
+    def log(self, data_dict: Dict[str, Union[Tensor, float]]) -> None:
+        """Record data dict."""
 
         def _handle_value(value: Union[Tensor, Any]) -> Any:
             if isinstance(value, Tensor):
                 return value.item()
             return value
 
-        metrics = {k: _handle_value(v) for k, v in metrics_dict.items()}
+        metrics = {k: _handle_value(v) for k, v in data_dict.items()}
         self.metrics.append(metrics)
 
     def save(self) -> None:

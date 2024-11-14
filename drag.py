@@ -9,7 +9,7 @@ from loguru import logger
 from ollama import Client
 from tqdm import tqdm
 
-from modules.csv_logs import CSVLogger
+from modules.csv_logger import CSVLogger
 from modules.data_types import Datapoint, RAGAnswer, Testcase
 from modules.evaluator import AdvancedQAEvaluator
 from modules.retriever import ContextRetriever
@@ -151,7 +151,7 @@ class DistributedRAGSystem:
             neighbor = self.nodes[neighbor_id]
             retrieval_answers[neighbor_id] = neighbor.generate_answer(question)
 
-        # TODO: Rank answers by confidence and select top k
+        # TODO: Rank and cache answers by confidence and select top k
         logger.debug(f"fetched answers from neighbors {selected_neighbor_ids}:\n {retrieval_answers}")
         final_answer = selected_node.generate_answer(question, retrieval_answers)
         logger.debug(f"after aggregating answers from neighbors, final answer: {final_answer}")
@@ -170,6 +170,11 @@ def get_dict_val(dict_item, dot_keys):
 
 def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_nodes: int = 10):
     """Run evaluation on a HuggingFace dataset"""
+    # Init csv logger
+    csv_logger = CSVLogger()
+    metrics_logger = csv_logger.logger("metrics")
+    testcases_logger = csv_logger.logger("testcases")
+
     # Load Huggingface dataset
     dataset = load_dataset(**data_config["load"])
     datapoints: List[Datapoint] = []
@@ -206,7 +211,8 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
             is_retrieval_answer=is_retrieval_answer,
             retrieval_answers=retrieval_answers,
         )
-        # logger.debug(f"test_case: {test_case}")
+        testcases_logger.log(test_case.model_dump())
+        testcases_logger.save()
         test_cases.append(test_case)
 
     # Calculate metrics
@@ -214,10 +220,9 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
     results = qa_evaluator.evaluate(test_cases)
 
     # log results
-    # TODO: log test cases
+    metrics_logger.log(results)
+    metrics_logger.save()
     logger.info(f"Evaluation Results:\n{json.dumps(results)}")
-    csv_logger = CSVLogger()
-    csv_logger.log_metrics(results)
 
 
 def main():

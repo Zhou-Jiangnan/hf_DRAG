@@ -15,14 +15,19 @@ $ python install -r requirements.txt
 Start [Ollama](https://github.com/ollama/ollama/blob/main/docs/faq.md) local LLM service:
 
 ```bash
-# start Llama 3.2 - 3B
+# start ollama service:
+$ sudo systemctl start ollama
+# start serving model "Llama 3.2 - 3B"
 # for other Ollama models: https://ollama.com/library
 $ ollama run llama3.2
 # preload a model into Ollama to get faster response times:
 $ curl http://localhost:11434/api/generate -d '{"model": "llama3.2"}'
-# start/stop ollama service:
-$ sudo systemctl start ollama
-$ sudo systemctl stop ollama
+```
+
+Install [NLTK Data](https://www.nltk.org/data.html)
+
+```bash
+$ python -m nltk.downloader all
 ```
 
 ## Models
