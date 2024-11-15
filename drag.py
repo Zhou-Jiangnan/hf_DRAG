@@ -1,7 +1,7 @@
 import json
 import random
 import sys
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 from datasets import load_dataset
 from jinja2 import Environment, FileSystemLoader
@@ -49,29 +49,13 @@ class RAGNode:
         # logger.debug(f"[question]: {question} [answer]: {answer}; [confidence]: {confidence}")
         return RAGAnswer(content=answer, confidence=confidence)
 
-    def generate_answer(self, question: str, retrieved_answers: Dict[int, RAGAnswer]|None = None) -> RAGAnswer:
-        """Generate answer using local dataset and LLM"""
-        # Find most relevant info from local dataset
-        answers = [self.retrieve_local_info(question)]
-        if retrieved_answers is not None:
-            answers = answers + list(retrieved_answers.values())
-
-        # Construct prompt with retrieved information
-        env = Environment(loader=FileSystemLoader(searchpath="./templates"))
-        prompt_tmpl = env.get_template("generate_answer.tmpl")
-        prompt = prompt_tmpl.render(question=question, retrieved_info=answers)
-
-        # Invoke LLM
-        logger.debug(prompt)
-        rag_answer = self.invoke_llm(prompt)
-        return rag_answer
-
-    def retrieve_local_info(self, question: str) -> RAGAnswer:
+    def generate_local_answer(self, question: str) -> RAGAnswer:
         """Retrieve relevant information from local dataset"""
         # TODO: improve local info search accuracy and confidence
         local_sentences = [f"[Q]:{datapoint.question} [A]:{datapoint.answer}"
                            for datapoint in self.local_dataset]
         local_relevant_info = self.retriever.semantic_search(local_sentences, question)
+        # logger.debug(f"local_relevant_info: {local_relevant_info}")
 
         # Construct prompt with retrieved information
         env = Environment(loader=FileSystemLoader(searchpath="./templates"))
@@ -80,6 +64,21 @@ class RAGNode:
 
         # Invoke LLM
         rag_answer = self.invoke_llm(prompt)
+        logger.debug(f"\nprompt:\n{prompt}\nanswer:{rag_answer}")
+        return rag_answer
+
+    def aggregate_answers(self, question: str, retrieved_answers: Dict[int, RAGAnswer]) -> RAGAnswer:
+        """Generate answer using local dataset and LLM"""
+        answers = list(retrieved_answers.values())
+
+        # Construct prompt with retrieved information
+        env = Environment(loader=FileSystemLoader(searchpath="./templates"))
+        prompt_tmpl = env.get_template("aggregate_answers.tmpl")
+        prompt = prompt_tmpl.render(question=question, retrieved_info=answers)
+
+        # Invoke LLM
+        rag_answer = self.invoke_llm(prompt)
+        logger.debug(f"\nprompt:\n{prompt}\nanswer:{rag_answer}")
         return rag_answer
 
 
@@ -113,7 +112,7 @@ class DistributedRAGSystem:
     
     def query(
             self, datapoint: Datapoint, selected_node_id: Optional[int] = None
-    ) -> (RAGAnswer, bool, Dict[int, RAGAnswer]):
+    ) -> Tuple[RAGAnswer, bool, Dict[int, RAGAnswer]]:
         """
         Query a specific question on a certain node in the cluster.
 
@@ -129,7 +128,7 @@ class DistributedRAGSystem:
         selected_node = self.nodes[selected_node_id]
 
         # Get answer from starting node
-        original_answer = selected_node.generate_answer(datapoint.question)
+        original_answer = selected_node.generate_local_answer(datapoint.question)
 
         # If original answer is confident enough, return
         if original_answer.confidence > self.retrieval_confidence_threshold:
@@ -137,20 +136,19 @@ class DistributedRAGSystem:
             return original_answer, False, {}
 
         # Select random subset of neighbors to retrieval
+        # TODO: avoid select itself
         selected_neighbor_ids = random.sample(list(self.nodes.keys()), self.retrieval_neighbor_num)
-        # logger.debug(f"not confident for question: {datapoint.question}, "
-        #              f"fetch answers from neighbors {selected_neighbor_ids}")
         
         retrieval_answers: Dict[int, RAGAnswer] = {}
         
         # Get answers from selected neighbors
         for neighbor_id in selected_neighbor_ids:
             neighbor = self.nodes[neighbor_id]
-            retrieval_answers[neighbor_id] = neighbor.generate_answer(datapoint.question)
+            retrieval_answers[neighbor_id] = neighbor.generate_local_answer(datapoint.question)
 
         # TODO: Rank and cache answers by confidence and select top k
         # logger.debug(f"fetched answers from neighbors {selected_neighbor_ids}:\n {retrieval_answers}")
-        final_answer = selected_node.generate_answer(datapoint.question, retrieval_answers)
+        final_answer = selected_node.aggregate_answers(datapoint.question, retrieval_answers)
         # logger.debug(f"after aggregating answers from neighbors, final answer: {final_answer}")
 
         selected_node.add_to_local_dataset(Datapoint(question=datapoint.question, answer=datapoint.answer))
@@ -239,3 +237,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
