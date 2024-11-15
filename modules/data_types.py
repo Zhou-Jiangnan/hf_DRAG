@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 
 class RAGAnswer(BaseModel):
-    text: str
+    content: str
     confidence: float
 
 

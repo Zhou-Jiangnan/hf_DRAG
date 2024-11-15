@@ -4,6 +4,7 @@ import sys
 from typing import List, Dict, Optional
 
 from datasets import load_dataset
+from jinja2 import Environment, FileSystemLoader
 from jsonargparse import Namespace
 from loguru import logger
 from ollama import Client
@@ -46,47 +47,32 @@ class RAGNode:
         confidence = response_json.get("confidence", 0.0)
         confidence = float(confidence)
         # logger.debug(f"[question]: {question} [answer]: {answer}; [confidence]: {confidence}")
-        return RAGAnswer(text=answer, confidence=confidence)
+        return RAGAnswer(content=answer, confidence=confidence)
 
     def generate_answer(self, question: str, retrieved_answers: Dict[int, RAGAnswer]|None = None) -> RAGAnswer:
         """Generate answer using local dataset and LLM"""
         # Find most relevant info from local dataset
-        retrieved_info = self.retrieve_local_info(question)
-
-        # Construct prompt with retrieved answers
+        answers = [self.retrieve_local_info(question)]
         if retrieved_answers is not None:
-            global_info = "\n".join(
-                f"Answer from {node_id} (confidence: {ans.confidence}):"
-                f" {ans.text}"
-                for node_id, ans in retrieved_answers.items()
-            )
-            retrieved_info = retrieved_info + "\n" + global_info
+            answers = answers + list(retrieved_answers.values())
 
         # Construct prompt with retrieved information
-        prompt = f"""
-        Question:
-        {question}
-
-        Retrieved Information:
-        {retrieved_info}
-
-        Please provide an answer using retrieved information, along with a confidence score between 0.0 and 1.0. 
-        Assign a confidence of 1.0 only if the retrieved information is directly relevant, accurate, 
-        and fully supports the answer. For responses relying on partial or inferred information, 
-        use confidence levels below 1.0.
-
-        Respond using JSON with keys: `answer`, `confidence`."""
+        env = Environment(loader=FileSystemLoader(searchpath="./templates"))
+        prompt_tmpl = env.get_template("generate_answer.tmpl")
+        prompt = prompt_tmpl.render(question=question, retrieved_info=answers)
 
         # Execute LLM
+        # logger.debug(prompt)
         rag_answer = self.invoke_llm(prompt)
         return rag_answer
 
-    def retrieve_local_info(self, question: str) -> str:
+    def retrieve_local_info(self, question: str) -> RAGAnswer:
         """Retrieve relevant information from local dataset"""
+        # TODO: improve local info search accuracy
         local_sentences = [f"[Question]:{datapoint.question}[Answer]:{datapoint.answer}"
                            for datapoint in self.local_dataset]
-        relevant_info = self.retriever.semantic_search(local_sentences, question)[0]
-        return str(relevant_info)
+        relevant_info, similarity = self.retriever.semantic_search(local_sentences, question)[0]
+        return RAGAnswer(content=relevant_info, confidence=similarity)
 
 
 class DistributedRAGSystem:
@@ -139,13 +125,13 @@ class DistributedRAGSystem:
 
         # If original answer is confident enough, return
         if original_answer.confidence > self.retrieval_confidence_threshold:
-            logger.debug(f"confident enough for question: {datapoint.question}, return: {original_answer}")
+            # logger.debug(f"confident enough for question: {datapoint.question}, return: {original_answer}")
             return original_answer, False, {}
 
         # Select random subset of neighbors to retrieval
         selected_neighbor_ids = random.sample(list(self.nodes.keys()), self.retrieval_neighbor_num)
-        logger.debug(f"not confident for question: {datapoint.question}, "
-                     f"fetch answers from neighbors {selected_neighbor_ids}")
+        # logger.debug(f"not confident for question: {datapoint.question}, "
+        #              f"fetch answers from neighbors {selected_neighbor_ids}")
         
         retrieval_answers: Dict[int, RAGAnswer] = {}
         
@@ -155,9 +141,9 @@ class DistributedRAGSystem:
             retrieval_answers[neighbor_id] = neighbor.generate_answer(datapoint.question)
 
         # TODO: Rank and cache answers by confidence and select top k
-        logger.debug(f"fetched answers from neighbors {selected_neighbor_ids}:\n {retrieval_answers}")
+        # logger.debug(f"fetched answers from neighbors {selected_neighbor_ids}:\n {retrieval_answers}")
         final_answer = selected_node.generate_answer(datapoint.question, retrieval_answers)
-        logger.debug(f"after aggregating answers from neighbors, final answer: {final_answer}")
+        # logger.debug(f"after aggregating answers from neighbors, final answer: {final_answer}")
 
         selected_node.add_to_local_dataset(Datapoint(question=datapoint.question, answer=datapoint.answer))
         
@@ -212,7 +198,7 @@ def run_simulation(model_cfg: Namespace, data_cfg: Namespace, drag_cfg: Namespac
         test_case = Testcase(
             question=datapoint.question,
             expected_output=datapoint.answer,
-            actual_output=drag_answer.text,
+            actual_output=drag_answer.content,
             confidence=drag_answer.confidence,
             is_retrieval_answer=is_retrieval_answer,
             retrieval_answers=retrieval_answers,
