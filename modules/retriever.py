@@ -13,11 +13,11 @@ class ContextRetriever:
         > Reimers, N. "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks."
         arXiv preprint arXiv:1908.10084 (2019).
 
-    Usage:
-    ```python
-    retriever = ContextRetriever(embedding_model="sentence-transformers/all-MiniLM-L6-v2")
-    results = retriever.semantic_search(local_sentences, "your question", top_k=1)
-    ```
+    Example::
+
+        retriever = ContextRetriever(embedding_model="sentence-transformers/all-MiniLM-L6-v2")
+        results = retriever.semantic_search(local_sentences, "your question", top_k=1)
+
     """
     def __init__(self, embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.embedding_model = SentenceTransformer(embedding_model)

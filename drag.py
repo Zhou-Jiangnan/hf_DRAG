@@ -4,7 +4,7 @@ import sys
 from typing import List, Dict, Optional
 
 from datasets import load_dataset
-from jsonargparse import ArgumentParser
+from jsonargparse import Namespace
 from loguru import logger
 from ollama import Client
 from tqdm import tqdm
@@ -12,6 +12,7 @@ from tqdm import tqdm
 from modules.csv_logger import CSVLogger
 from modules.data_types import Datapoint, RAGAnswer, Testcase
 from modules.evaluator import AdvancedQAEvaluator
+from modules.options import parse_args
 from modules.retriever import ContextRetriever
 
 
@@ -22,13 +23,11 @@ class RAGNode:
             llm_base_url: str,
             llm_name: str,
             confidence_threshold: float = 0.7,
-            num_retrieval_answers: int = 3
     ):
         self.node_id = node_id
         self.llm_name = llm_name
         self.llm_client = Client(host=llm_base_url)
         self.confidence_threshold = confidence_threshold
-        self.num_retrieval_answers = num_retrieval_answers
         self.retriever = ContextRetriever()
         self.local_dataset: List[Datapoint] = []
 
@@ -36,7 +35,7 @@ class RAGNode:
         """Add a new datapoint to local RAG dataset"""
         self.local_dataset.append(datapoint)
     
-    def execute_llm(self, prompt: str) -> RAGAnswer:
+    def invoke_llm(self, prompt: str) -> RAGAnswer:
         response = self.llm_client.generate(model=self.llm_name, prompt=prompt, format="json")
         response_text = response["response"]
 
@@ -78,7 +77,7 @@ class RAGNode:
         Respond using JSON with keys: `answer`, `confidence`."""
 
         # Execute LLM
-        rag_answer = self.execute_llm(prompt)
+        rag_answer = self.invoke_llm(prompt)
         return rag_answer
 
     def retrieve_local_context(self, question: str) -> str:
@@ -96,10 +95,12 @@ class DistributedRAGSystem:
             llm_name: str, 
             num_nodes: int, 
             datapoints: List[Datapoint], 
-            confidence_threshold: float
+            retrieval_confidence_threshold: float,
+            retrieval_neighbor_num: int,
         ):
 
-        self.confidence_threshold = confidence_threshold
+        self.retrieval_confidence_threshold = retrieval_confidence_threshold
+        self.retrieval_neighbor_num = retrieval_neighbor_num
         # Initialize nodes
         self.nodes: Dict[int, RAGNode] = {}
         for node_id in range(num_nodes):
@@ -136,12 +137,12 @@ class DistributedRAGSystem:
         original_answer = selected_node.generate_answer(question)
 
         # If original answer is confident enough, return
-        if original_answer.confidence >= self.confidence_threshold:
+        if original_answer.confidence >= self.retrieval_confidence_threshold:
             logger.debug(f"confident enough for question: {question}, return: {original_answer}")
             return original_answer, False, {}
 
         # Select random subset of neighbors to retrieval
-        selected_neighbor_ids = random.sample(list(self.nodes.keys()), 3)
+        selected_neighbor_ids = random.sample(list(self.nodes.keys()), self.retrieval_neighbor_num)
         logger.debug(f"not confident for question: {question}, fetch answers from neighbors {selected_neighbor_ids}")
         
         retrieval_answers: Dict[int, RAGAnswer] = {}
@@ -155,6 +156,8 @@ class DistributedRAGSystem:
         logger.debug(f"fetched answers from neighbors {selected_neighbor_ids}:\n {retrieval_answers}")
         final_answer = selected_node.generate_answer(question, retrieval_answers)
         logger.debug(f"after aggregating answers from neighbors, final answer: {final_answer}")
+
+        selected_node.add_to_local_dataset(Datapoint(question=question, answer=final_answer.text))
         
         return final_answer, True, retrieval_answers
 
@@ -168,7 +171,7 @@ def get_dict_val(dict_item, dot_keys):
     return val
 
 
-def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_nodes: int = 10):
+def run_simulation(model_cfg: Namespace, data_cfg: Namespace, drag_cfg: Namespace):
     """Run evaluation on a HuggingFace dataset"""
     # Init csv logger
     csv_logger = CSVLogger()
@@ -176,23 +179,24 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
     testcases_logger = csv_logger.logger("testcases")
 
     # Load Huggingface dataset
-    dataset = load_dataset(**data_config["load"])
+    dataset = load_dataset(**data_cfg.load.as_dict())
     datapoints: List[Datapoint] = []
 
     # random pick 20 samples for testing
     for i, item in enumerate(dataset.take(20)):
-        question = get_dict_val(item, data_config["question_path"])
-        answer = get_dict_val(item, data_config["answer_path"])
+        question = get_dict_val(item, data_cfg.question_path)
+        answer = get_dict_val(item, data_cfg.answer_path)
         datapoint = Datapoint(question=str(question), answer=str(answer))
         datapoints.append(datapoint)
 
     # Initialize distributed RAG system
     drag_system = DistributedRAGSystem(
-        llm_base_url=llm_base_url,
-        llm_name=llm_name,
-        num_nodes=num_nodes,
+        llm_base_url=model_cfg.base_url,
+        llm_name=model_cfg.name,
+        num_nodes=drag_cfg.num_nodes,
         datapoints=datapoints,
-        confidence_threshold=0.9,
+        retrieval_confidence_threshold=drag_cfg.retrieval_confidence_threshold,
+        retrieval_neighbor_num=drag_cfg.retrieval_neighbor_num,
     )
 
     # Run evaluation
@@ -227,26 +231,14 @@ def run_simulation(llm_base_url: str, llm_name: str, data_config: dict, num_node
 
 def main():
     # parse arguments
-    parser = ArgumentParser(default_config_files=["./config/default.yaml"])
-    parser.add_argument('--log_level', type=str, help='DEBUG, INFO, WARNING, ERROR, or CRITICAL')
-
-    parser.add_argument("--model.base_url", type=str)
-    parser.add_argument("--model.name", type=str)
-
-    parser.add_argument("--data.load.path", type=str)
-    parser.add_argument("--data.load.name", type=str)
-    parser.add_argument("--data.load.split", type=str)
-    parser.add_argument("--data.question_path", type=str)
-    parser.add_argument("--data.answer_path", type=str)
-
-    cfg = parser.parse_args()
+    cfg = parse_args()
 
     # Changing the level of the logger
     logger.remove()  # Remove default handler.
     logger.add(sys.stderr, level=cfg.log_level)
 
     # run evaluation
-    run_simulation(cfg.model.base_url, cfg.model.name, cfg.data.as_dict())
+    run_simulation(cfg.model, cfg.data, cfg.drag)
 
 
 if __name__ == "__main__":

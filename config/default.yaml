@@ -4,15 +4,19 @@ model:
   name: llama3.2
 data:
   ### trivia_qa
-#  load:
-#    path: mandarjoshi/trivia_qa
-#    name: rc.nocontext
-#    split: validation
-#  question_path: question
-#  answer_path: answer.value
-  ### natural_questions
   load:
-    path: lighteval/natural_questions_clean
+    path: mandarjoshi/trivia_qa
+    name: rc.nocontext
     split: validation
   question_path: question
-  answer_path: short_answers
+  answer_path: answer.value
+  ### natural_questions
+#  load:
+#    path: lighteval/natural_questions_clean
+#    split: validation
+#  question_path: question
+#  answer_path: short_answers
+drag:
+  num_nodes: 10
+  retrieval_confidence_threshold: 0.9
+  retrieval_neighbor_num: 3
