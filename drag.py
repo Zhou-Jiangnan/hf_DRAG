@@ -61,18 +61,26 @@ class RAGNode:
         prompt_tmpl = env.get_template("generate_answer.tmpl")
         prompt = prompt_tmpl.render(question=question, retrieved_info=answers)
 
-        # Execute LLM
-        # logger.debug(prompt)
+        # Invoke LLM
+        logger.debug(prompt)
         rag_answer = self.invoke_llm(prompt)
         return rag_answer
 
     def retrieve_local_info(self, question: str) -> RAGAnswer:
         """Retrieve relevant information from local dataset"""
-        # TODO: improve local info search accuracy
-        local_sentences = [f"[Question]:{datapoint.question}[Answer]:{datapoint.answer}"
+        # TODO: improve local info search accuracy and confidence
+        local_sentences = [f"[Q]:{datapoint.question} [A]:{datapoint.answer}"
                            for datapoint in self.local_dataset]
-        relevant_info, similarity = self.retriever.semantic_search(local_sentences, question)[0]
-        return RAGAnswer(content=relevant_info, confidence=similarity)
+        local_relevant_info = self.retriever.semantic_search(local_sentences, question)
+
+        # Construct prompt with retrieved information
+        env = Environment(loader=FileSystemLoader(searchpath="./templates"))
+        prompt_tmpl = env.get_template("generate_local_answer.tmpl")
+        prompt = prompt_tmpl.render(question=question, local_relevant_info=local_relevant_info)
+
+        # Invoke LLM
+        rag_answer = self.invoke_llm(prompt)
+        return rag_answer
 
 
 class DistributedRAGSystem:

@@ -1,4 +1,4 @@
-log_level: INFO  # DEBUG, INFO, WARNING, ERROR, etc.
+log_level: DEBUG  # DEBUG, INFO, WARNING, ERROR, etc.
 model:
   base_url: http://localhost:11434
   name: llama3.2

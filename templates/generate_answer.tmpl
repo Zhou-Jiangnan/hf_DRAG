@@ -10,6 +10,6 @@ Each piece of retrieved information includes a confidence score. When forming yo
 
 Provide an answer that is strictly based on the highest-confidence retrievals, and give a confidence score between 0.0 and 1.0:
 - Assign a confidence of 1.0 only if high-confidence retrievals fully support the answer without any need for additional inference, assumption, or external knowledge.
-- If the retrieved information is insufficient or conflicting, indicate this with an appropriate confidence score below 1.0 and an answer noting "Insufficient high-confidence information."
+- If the retrieved information is insufficient or conflicting, answer with "Insufficient information." and a score of 0.0.
 
 Respond concisely. Respond in JSON format with keys: `answer`, `confidence`.

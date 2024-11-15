@@ -22,7 +22,7 @@ class ContextRetriever:
     def __init__(self, embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.embedding_model = SentenceTransformer(embedding_model)
 
-    def semantic_search(self, local_sentences: List[str], question: str, top_k: int = 1) -> List[Tuple[str, float]]:
+    def semantic_search(self, local_sentences: List[str], question: str, top_k: int = 1) -> List[str]:
         """
         Semantic search using sentence transformers and cosine similarity
         """
@@ -36,6 +36,6 @@ class ContextRetriever:
 
         # Get top-k results
         top_indices = np.argsort(similarities)[-top_k:][::-1]
-        top_results = [(local_sentences[i], similarities[i]) for i in top_indices]
+        top_results = [local_sentences[i] for i in top_indices]
 
         return top_results
