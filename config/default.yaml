@@ -1,4 +1,4 @@
-log_level: DEBUG  # DEBUG, INFO, WARNING, ERROR, etc.
+log_level: INFO  # DEBUG, INFO, WARNING, ERROR, etc.
 model:
   base_url: http://localhost:11434
   name: llama3.2
@@ -18,5 +18,5 @@ data:
 #  answer_path: short_answers
 drag:
   num_nodes: 10
-  retrieval_confidence_threshold: 0.9
-  retrieval_neighbor_num: 3
+  retrieval_confidence_threshold: 1.0
+  retrieval_neighbor_num: 10

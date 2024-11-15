@@ -22,12 +22,10 @@ class RAGNode:
             node_id: int,
             llm_base_url: str,
             llm_name: str,
-            confidence_threshold: float = 0.7,
     ):
         self.node_id = node_id
         self.llm_name = llm_name
         self.llm_client = Client(host=llm_base_url)
-        self.confidence_threshold = confidence_threshold
         self.retriever = ContextRetriever()
         self.local_dataset: List[Datapoint] = []
 
@@ -52,40 +50,43 @@ class RAGNode:
 
     def generate_answer(self, question: str, retrieved_answers: Dict[int, RAGAnswer]|None = None) -> RAGAnswer:
         """Generate answer using local dataset and LLM"""
-        # Find most relevant context from local dataset
-        relevant_context = self.retrieve_local_context(question)
+        # Find most relevant info from local dataset
+        retrieved_info = self.retrieve_local_info(question)
 
         # Construct prompt with retrieved answers
         if retrieved_answers is not None:
-            retrieved_context = "\n".join(
+            global_info = "\n".join(
                 f"Answer from {node_id} (confidence: {ans.confidence}):"
                 f" {ans.text}"
                 for node_id, ans in retrieved_answers.items()
             )
-            relevant_context = relevant_context + "\n" + retrieved_context
-            # logger.debug(f"relevant_context: {relevant_context}")
+            retrieved_info = retrieved_info + "\n" + global_info
 
-        # Construct prompt with context
+        # Construct prompt with retrieved information
         prompt = f"""
         Question:
         {question}
 
-        Context:
-        {relevant_context}
+        Retrieved Information:
+        {retrieved_info}
 
-        Please provide an answer based on the context above and rate your confidence from 0.0 to 1.0.
+        Please provide an answer using retrieved information, along with a confidence score between 0.0 and 1.0. 
+        Assign a confidence of 1.0 only if the retrieved information is directly relevant, accurate, 
+        and fully supports the answer. For responses relying on partial or inferred information, 
+        use confidence levels below 1.0.
+
         Respond using JSON with keys: `answer`, `confidence`."""
 
         # Execute LLM
         rag_answer = self.invoke_llm(prompt)
         return rag_answer
 
-    def retrieve_local_context(self, question: str) -> str:
-        """Retrieve relevant context from local dataset"""
+    def retrieve_local_info(self, question: str) -> str:
+        """Retrieve relevant information from local dataset"""
         local_sentences = [f"[Question]:{datapoint.question}[Answer]:{datapoint.answer}"
                            for datapoint in self.local_dataset]
-        relevant_context = self.retriever.semantic_search(local_sentences, question)[0]
-        return str(relevant_context)
+        relevant_info = self.retriever.semantic_search(local_sentences, question)[0]
+        return str(relevant_info)
 
 
 class DistributedRAGSystem:
@@ -117,13 +118,13 @@ class DistributedRAGSystem:
 
     
     def query(
-            self, question: str, selected_node_id: Optional[int] = None
+            self, datapoint: Datapoint, selected_node_id: Optional[int] = None
     ) -> (RAGAnswer, bool, Dict[int, RAGAnswer]):
         """
         Query a specific question on a certain node in the cluster.
 
         Args:
-            question: str, the question to ask
+            datapoint: Datapoint, the question and the user-provided correct answer, to update node's local dataset
             selected_node_id: Optional[int]: which node to ask question
         Returns:
             Tuple(RAGAnswer, bool, Dict[int, RAGAnswer]): final answer, is_retrieval_answer, and retrieval_answers
@@ -134,30 +135,31 @@ class DistributedRAGSystem:
         selected_node = self.nodes[selected_node_id]
 
         # Get answer from starting node
-        original_answer = selected_node.generate_answer(question)
+        original_answer = selected_node.generate_answer(datapoint.question)
 
         # If original answer is confident enough, return
-        if original_answer.confidence >= self.retrieval_confidence_threshold:
-            logger.debug(f"confident enough for question: {question}, return: {original_answer}")
+        if original_answer.confidence > self.retrieval_confidence_threshold:
+            logger.debug(f"confident enough for question: {datapoint.question}, return: {original_answer}")
             return original_answer, False, {}
 
         # Select random subset of neighbors to retrieval
         selected_neighbor_ids = random.sample(list(self.nodes.keys()), self.retrieval_neighbor_num)
-        logger.debug(f"not confident for question: {question}, fetch answers from neighbors {selected_neighbor_ids}")
+        logger.debug(f"not confident for question: {datapoint.question}, "
+                     f"fetch answers from neighbors {selected_neighbor_ids}")
         
         retrieval_answers: Dict[int, RAGAnswer] = {}
         
         # Get answers from selected neighbors
         for neighbor_id in selected_neighbor_ids:
             neighbor = self.nodes[neighbor_id]
-            retrieval_answers[neighbor_id] = neighbor.generate_answer(question)
+            retrieval_answers[neighbor_id] = neighbor.generate_answer(datapoint.question)
 
         # TODO: Rank and cache answers by confidence and select top k
         logger.debug(f"fetched answers from neighbors {selected_neighbor_ids}:\n {retrieval_answers}")
-        final_answer = selected_node.generate_answer(question, retrieval_answers)
+        final_answer = selected_node.generate_answer(datapoint.question, retrieval_answers)
         logger.debug(f"after aggregating answers from neighbors, final answer: {final_answer}")
 
-        selected_node.add_to_local_dataset(Datapoint(question=question, answer=final_answer.text))
+        selected_node.add_to_local_dataset(Datapoint(question=datapoint.question, answer=datapoint.answer))
         
         return final_answer, True, retrieval_answers
 
@@ -204,7 +206,7 @@ def run_simulation(model_cfg: Namespace, data_cfg: Namespace, drag_cfg: Namespac
 
     for datapoint in tqdm(datapoints, desc=f"Inferencing on {len(datapoints)} test case(s)"):
         # Each question is processed by a random node
-        drag_answer, is_retrieval_answer, retrieval_answers = drag_system.query(datapoint.question)
+        drag_answer, is_retrieval_answer, retrieval_answers = drag_system.query(datapoint)
 
         # test case
         test_case = Testcase(
