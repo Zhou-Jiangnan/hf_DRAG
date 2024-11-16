@@ -197,9 +197,10 @@ def run_simulation(model_cfg: Namespace, data_cfg: Namespace, drag_cfg: Namespac
     )
 
     # Run evaluation
+    qa_evaluator = AdvancedQAEvaluator()
     test_cases = []
 
-    for datapoint in tqdm(datapoints, desc=f"Inferencing on {len(datapoints)} test case(s)"):
+    for idx, datapoint in enumerate(tqdm(datapoints, desc=f"Inferencing on {len(datapoints)} test case(s)")):
         # Each question is processed by a random node
         drag_answer, is_retrieval_answer, retrieval_answers = drag_system.query(datapoint)
 
@@ -213,17 +214,22 @@ def run_simulation(model_cfg: Namespace, data_cfg: Namespace, drag_cfg: Namespac
             retrieval_answers=retrieval_answers,
         )
         testcases_logger.log(test_case.model_dump())
-        testcases_logger.save()
         test_cases.append(test_case)
 
-    # Calculate metrics
-    qa_evaluator = AdvancedQAEvaluator()
-    results = qa_evaluator.evaluate(test_cases)
+        # log evaluation results regularly
+        if idx % drag_cfg.log_every_n_steps == 0:
+            testcases_logger.save()
+            eval_results = qa_evaluator.evaluate(test_cases)
+            metrics_logger.log(eval_results)
+            metrics_logger.save()
 
-    # log results
-    metrics_logger.log(results)
+    # log final results
+    testcases_logger.save()
+    eval_results = qa_evaluator.evaluate(test_cases)
+    metrics_logger.log(eval_results)
     metrics_logger.save()
-    logger.info(f"Evaluation Results:\n{json.dumps(results)}")
+
+    logger.info(f"\nFinal Evaluation Results:\n{json.dumps(eval_results)}\n")
 
 
 def main():
@@ -240,5 +246,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 

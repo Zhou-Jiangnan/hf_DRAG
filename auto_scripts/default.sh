@@ -8,5 +8,5 @@ nohup python drag.py \
     --config="./config/drag.yaml" \
     --config="./config/model/llama32_3b.yaml" \
     --config="./config/dataset/trivia_qa.yaml" \
-    --log_level=INFO > $DRAG_DIR/script.log 2>&1 &
+    --log_level=INFO > $DRAG_DIR/logs/script.log 2>&1 &
 

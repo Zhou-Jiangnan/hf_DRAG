@@ -3,3 +3,5 @@ drag:
   num_nodes: 10
   retrieval_confidence_threshold: 1.0
   retrieval_neighbor_num: 10
+  log_every_n_steps: 10
+

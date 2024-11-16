@@ -23,8 +23,10 @@ def parse_args():
     parser.add_argument("--drag.num_nodes", type=int)
     parser.add_argument("--drag.retrieval_confidence_threshold", type=float)
     parser.add_argument("--drag.retrieval_neighbor_num", type=int)
+    parser.add_argument("--drag.log_every_n_steps", type=int)
 
-    parser.add_argument("--config", action="config")  
+    parser.add_argument("--config", action="config")
 
     cfg = parser.parse_args()
     return cfg
+
