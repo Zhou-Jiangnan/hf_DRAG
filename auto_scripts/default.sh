@@ -8,4 +8,4 @@ nohup python drag.py --log_level=INFO \
     --config="./config/drag.yaml" \
     --config="./config/model/llama32_3b.yaml" \
     --config="./config/dataset/trivia_qa.yaml" \
-    > $DRAG_DIR/drag.log 2>&1 &
+    > $DRAG_DIR/script.log 2>&1 &

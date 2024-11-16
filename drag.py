@@ -135,7 +135,9 @@ class DistributedRAGSystem:
             return original_answer, False, {}
 
         # Select random subset of neighbors to retrieval
-        selected_neighbor_ids = random.sample(list(self.nodes.keys()).remove(selected_node_id), self.retrieval_neighbor_num)
+        candidate_neighbor_ids = list(self.nodes.keys())
+        candidate_neighbor_ids.remove(selected_node_id)
+        selected_neighbor_ids = random.sample(candidate_neighbor_ids, self.retrieval_neighbor_num)
         
         retrieval_answers: Dict[int, RAGAnswer] = {}
         
@@ -235,3 +237,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
