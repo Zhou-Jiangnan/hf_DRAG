@@ -42,11 +42,14 @@ class RAGNode:
         response_json = json.loads(response_text)
 
         # Parse answer and confidence
-        answer = response_json.get("answer", "None")
-        answer = str(answer)
-        confidence = response_json.get("confidence", 0.0)
-        confidence = float(confidence)
-        # logger.debug(f"[question]: {question} [answer]: {answer}; [confidence]: {confidence}")
+        try:
+            answer = response_json.get("answer", "None")
+            answer = str(answer)
+            confidence = response_json.get("confidence", 0.0)
+            confidence = float(confidence)
+        except TypeError:
+            answer = ""
+            confidence = 0.0
         return RAGAnswer(content=answer, confidence=confidence)
 
     def generate_local_answer(self, question: str) -> RAGAnswer:
@@ -237,4 +240,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
