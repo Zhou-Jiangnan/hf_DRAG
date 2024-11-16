@@ -1,0 +1,5 @@
+log_level: DEBUG  # DEBUG, INFO, WARNING, ERROR, etc.
+drag:
+  num_nodes: 10
+  retrieval_confidence_threshold: 1.0
+  retrieval_neighbor_num: 10

@@ -51,7 +51,6 @@ class RAGNode:
 
     def generate_local_answer(self, question: str) -> RAGAnswer:
         """Retrieve relevant information from local dataset"""
-        # TODO: improve local info search accuracy and confidence
         local_sentences = [f"[Q]:{datapoint.question} [A]:{datapoint.answer}"
                            for datapoint in self.local_dataset]
         local_relevant_info = self.retriever.semantic_search(local_sentences, question)
@@ -94,7 +93,7 @@ class DistributedRAGSystem:
         ):
 
         self.retrieval_confidence_threshold = retrieval_confidence_threshold
-        self.retrieval_neighbor_num = retrieval_neighbor_num
+        self.retrieval_neighbor_num = min(retrieval_neighbor_num, num_nodes-1)
         # Initialize nodes
         self.nodes: Dict[int, RAGNode] = {}
         for node_id in range(num_nodes):
@@ -136,8 +135,7 @@ class DistributedRAGSystem:
             return original_answer, False, {}
 
         # Select random subset of neighbors to retrieval
-        # TODO: avoid select itself
-        selected_neighbor_ids = random.sample(list(self.nodes.keys()), self.retrieval_neighbor_num)
+        selected_neighbor_ids = random.sample(list(self.nodes.keys()).remove(selected_node_id), self.retrieval_neighbor_num)
         
         retrieval_answers: Dict[int, RAGAnswer] = {}
         
@@ -237,4 +235,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
