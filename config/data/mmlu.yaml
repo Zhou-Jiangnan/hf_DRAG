@@ -1,0 +1,10 @@
+data:
+  load:
+    path: cais/mmlu
+    name: all
+    split: test
+  task_type: mcqa
+  topic_path: subject
+  question_path: question
+  choices_path: choices
+  answer_path: answer

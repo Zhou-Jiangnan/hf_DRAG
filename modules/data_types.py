@@ -1,22 +1,23 @@
-from typing import Dict
-
 from pydantic import BaseModel
 
 
-class RAGAnswer(BaseModel):
-    content: str
-    confidence: float
-
-
 class Datapoint(BaseModel):
+    topic: str
     question: str
     answer: str
+
+
+class DRAGAnswer(BaseModel):
+    answer: str
+    relevant_knowledge: str
+    relevant_score: float
+    num_hops: int
 
 
 class Testcase(BaseModel):
     question: str
     expected_output: str
     actual_output: str
-    confidence: float
-    is_retrieval_answer: bool
-    retrieval_answers: Dict[int, RAGAnswer]
+    relevant_knowledge: str
+    relevant_score: float
+    num_hops: int

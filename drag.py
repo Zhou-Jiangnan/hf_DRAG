@@ -1,162 +1,19 @@
 import json
 import random
 import sys
-from typing import List, Dict, Optional, Tuple
+from typing import List
 
 from datasets import load_dataset
-from jinja2 import Environment, FileSystemLoader
 from jsonargparse import Namespace
 from loguru import logger
-from ollama import Client
+import numpy as np
 from tqdm import tqdm
 
 from modules.csv_logger import CSVLogger
-from modules.data_types import Datapoint, RAGAnswer, Testcase
-from modules.evaluator import AdvancedQAEvaluator
+from modules.data_types import Datapoint, Testcase
+from modules.drag_network import DRAGNetwork
+from modules.evaluator import QAEvaluator
 from modules.options import parse_args
-from modules.retriever import ContextRetriever
-
-
-class RAGNode:
-    def __init__(
-            self,
-            node_id: int,
-            llm_base_url: str,
-            llm_name: str,
-    ):
-        self.node_id = node_id
-        self.llm_name = llm_name
-        self.llm_client = Client(host=llm_base_url)
-        self.retriever = ContextRetriever()
-        self.local_dataset: List[Datapoint] = []
-
-    def add_to_local_dataset(self, datapoint: Datapoint):
-        """Add a new datapoint to local RAG dataset"""
-        self.local_dataset.append(datapoint)
-    
-    def invoke_llm(self, prompt: str) -> RAGAnswer:
-        response = self.llm_client.generate(model=self.llm_name, prompt=prompt, format="json")
-        response_text = response["response"]
-
-        # logger.debug(f"response_text: {response_text}")
-        response_json = json.loads(response_text)
-
-        # Parse answer and confidence
-        try:
-            answer = response_json.get("answer", "None")
-            answer = str(answer)
-            confidence = response_json.get("confidence", 0.0)
-            confidence = float(confidence)
-        except TypeError:
-            answer = ""
-            confidence = 0.0
-        return RAGAnswer(content=answer, confidence=confidence)
-
-    def generate_local_answer(self, question: str) -> RAGAnswer:
-        """Retrieve relevant information from local dataset"""
-        local_sentences = [f"[Q]:{datapoint.question} [A]:{datapoint.answer}"
-                           for datapoint in self.local_dataset]
-        local_relevant_info = self.retriever.semantic_search(local_sentences, question)
-        # logger.debug(f"local_relevant_info: {local_relevant_info}")
-
-        # Construct prompt with retrieved information
-        env = Environment(loader=FileSystemLoader(searchpath="./templates"))
-        prompt_tmpl = env.get_template("generate_local_answer.tmpl")
-        prompt = prompt_tmpl.render(question=question, local_relevant_info=local_relevant_info)
-
-        # Invoke LLM
-        rag_answer = self.invoke_llm(prompt)
-        logger.debug(f"\nprompt:\n{prompt}\nanswer:{rag_answer}")
-        return rag_answer
-
-    def aggregate_answers(self, question: str, retrieved_answers: Dict[int, RAGAnswer]) -> RAGAnswer:
-        """Generate answer using local dataset and LLM"""
-        answers = list(retrieved_answers.values())
-
-        # Construct prompt with retrieved information
-        env = Environment(loader=FileSystemLoader(searchpath="./templates"))
-        prompt_tmpl = env.get_template("aggregate_answers.tmpl")
-        prompt = prompt_tmpl.render(question=question, retrieved_info=answers)
-
-        # Invoke LLM
-        rag_answer = self.invoke_llm(prompt)
-        logger.debug(f"\nprompt:\n{prompt}\nanswer:{rag_answer}")
-        return rag_answer
-
-
-class DistributedRAGSystem:
-    def __init__(
-            self, 
-            llm_base_url: str,
-            llm_name: str, 
-            num_nodes: int, 
-            datapoints: List[Datapoint], 
-            retrieval_confidence_threshold: float,
-            retrieval_neighbor_num: int,
-        ):
-
-        self.retrieval_confidence_threshold = retrieval_confidence_threshold
-        self.retrieval_neighbor_num = min(retrieval_neighbor_num, num_nodes-1)
-        # Initialize nodes
-        self.nodes: Dict[int, RAGNode] = {}
-        for node_id in range(num_nodes):
-            self.nodes[node_id] = RAGNode(
-                node_id=node_id, 
-                llm_base_url=llm_base_url,
-                llm_name=llm_name,
-            )
-        
-        # Initialize data points
-        for i, datapoint in enumerate(datapoints):
-            node_idx = i % num_nodes
-            self.nodes[node_idx].add_to_local_dataset(datapoint)
-
-    
-    def query(
-            self, datapoint: Datapoint, selected_node_id: Optional[int] = None
-    ) -> Tuple[RAGAnswer, bool, Dict[int, RAGAnswer]]:
-        """
-        Query a specific question on a certain node in the cluster.
-
-        Args:
-            datapoint: Datapoint, the question and the user-provided correct answer, to update node's local dataset
-            selected_node_id: Optional[int]: which node to ask question
-        Returns:
-            Tuple(RAGAnswer, bool, Dict[int, RAGAnswer]): final answer, is_retrieval_answer, and retrieval_answers
-        """
-        if selected_node_id is None:
-            selected_node_id = random.choice(list(self.nodes.keys()))
-        
-        selected_node = self.nodes[selected_node_id]
-
-        # Get answer from starting node
-        original_answer = selected_node.generate_local_answer(datapoint.question)
-
-        # If original answer is confident enough, return
-        if original_answer.confidence > self.retrieval_confidence_threshold:
-            # logger.debug(f"confident enough for question: {datapoint.question}, return: {original_answer}")
-            return original_answer, False, {}
-
-        # Select random subset of neighbors to retrieval
-        candidate_neighbor_ids = list(self.nodes.keys())
-        candidate_neighbor_ids.remove(selected_node_id)
-        selected_neighbor_ids = random.sample(candidate_neighbor_ids, self.retrieval_neighbor_num)
-        
-        retrieval_answers: Dict[int, RAGAnswer] = {}
-        
-        # Get answers from selected neighbors
-        for neighbor_id in selected_neighbor_ids:
-            neighbor = self.nodes[neighbor_id]
-            retrieval_answers[neighbor_id] = neighbor.generate_local_answer(datapoint.question)
-
-        # TODO: Rank and cache answers by confidence and select top k
-        # logger.debug(f"fetched answers from neighbors {selected_neighbor_ids}:\n {retrieval_answers}")
-        final_answer = selected_node.aggregate_answers(datapoint.question, retrieval_answers)
-        # logger.debug(f"after aggregating answers from neighbors, final answer: {final_answer}")
-
-        selected_node.add_to_local_dataset(Datapoint(question=datapoint.question, answer=datapoint.answer))
-        
-        return final_answer, True, retrieval_answers
 
 
 def get_dict_val(dict_item, dot_keys):
@@ -168,56 +25,69 @@ def get_dict_val(dict_item, dot_keys):
     return val
 
 
-def run_simulation(model_cfg: Namespace, data_cfg: Namespace, drag_cfg: Namespace):
-    """Run evaluation on a HuggingFace dataset"""
+def run_simulation(cfg: Namespace):
     # Init csv logger
     csv_logger = CSVLogger()
     metrics_logger = csv_logger.logger("metrics")
     testcases_logger = csv_logger.logger("testcases")
 
     # Load Huggingface dataset
-    dataset = load_dataset(**data_cfg.load.as_dict())
-    datapoints: List[Datapoint] = []
+    dataset = load_dataset(**cfg.data.load.as_dict())
+    data_points: List[Datapoint] = []
+
+    # task type:
+    # - mcqa for Multiple Choice Question Answering
+    # - ogqa for Open Generative Question Answering
+    task_type = cfg.data.task_type
 
     # random pick 20 samples for testing
-    for i, item in enumerate(dataset.take(20)):
-        question = get_dict_val(item, data_cfg.question_path)
-        answer = get_dict_val(item, data_cfg.answer_path)
-        datapoint = Datapoint(question=str(question), answer=str(answer))
-        datapoints.append(datapoint)
+    for _, item in enumerate(dataset.take(20)):
+        topic = get_dict_val(item, cfg.data.topic_path)
+        question = get_dict_val(item, cfg.data.question_path)
+        answer = get_dict_val(item, cfg.data.answer_path)
+        if task_type == "mcqa":
+            choices = get_dict_val(item, cfg.data.choices_path)
+            connection_term = " Select the best answer from the following candidates, replying with 1, 2, 3, or 4: "
+            question = str(question) + connection_term + str(choices)
+        data_point = Datapoint(topic=str(topic), question=str(question), answer=str(answer))
+        data_points.append(data_point)
 
-    # Initialize distributed RAG system
-    drag_system = DistributedRAGSystem(
-        llm_base_url=model_cfg.base_url,
-        llm_name=model_cfg.name,
-        num_nodes=drag_cfg.num_nodes,
-        datapoints=datapoints,
-        retrieval_confidence_threshold=drag_cfg.retrieval_confidence_threshold,
-        retrieval_neighbor_num=drag_cfg.retrieval_neighbor_num,
-    )
+    # Initialize DRAG parameters
+    query_confidence_threshold = cfg.drag.query_confidence_threshold
+    num_query_neighbor = min(cfg.drag.num_query_neighbor, cfg.drag.num_peers - 1)
+    query_ttl = cfg.drag.query_ttl
+
+    # Initialize DRAG network with peers and knowledges
+    drag_net = DRAGNetwork(cfg.drag.num_peers, cfg.drag.num_peer_attachments, cfg.llm.base_url, cfg.llm.name)
+    drag_net.init_knowledge(data_points)
 
     # Run evaluation
-    qa_evaluator = AdvancedQAEvaluator()
+    qa_evaluator = QAEvaluator()
     test_cases = []
 
-    for idx, datapoint in enumerate(tqdm(datapoints, desc=f"Inferencing on {len(datapoints)} test case(s)")):
+    for idx, data_point in enumerate(tqdm(data_points, desc=f"Inferencing on {len(data_points)} test case(s)")):
         # Each question is processed by a random node
-        drag_answer, is_retrieval_answer, retrieval_answers = drag_system.query(datapoint)
+        drag_answer = drag_net.query(
+            data_point.question, 
+            num_query_neighbor=num_query_neighbor, 
+            query_confidence_threshold=query_confidence_threshold,
+            ttl=query_ttl
+        )
 
         # test case
         test_case = Testcase(
-            question=datapoint.question,
-            expected_output=datapoint.answer,
-            actual_output=drag_answer.content,
-            confidence=drag_answer.confidence,
-            is_retrieval_answer=is_retrieval_answer,
-            retrieval_answers=retrieval_answers,
+            question=data_point.question,
+            expected_output=data_point.answer,
+            actual_output=drag_answer.answer,
+            relevant_knowledge=drag_answer.relevant_knowledge,
+            relevant_score=drag_answer.relevant_score,
+            num_hops=drag_answer.num_hops,
         )
         testcases_logger.log(test_case.model_dump())
         test_cases.append(test_case)
 
         # log evaluation results regularly
-        if idx % drag_cfg.log_every_n_steps == 0:
+        if idx % cfg.drag.log_every_n_steps == 0:
             testcases_logger.save()
             eval_results = qa_evaluator.evaluate(test_cases)
             metrics_logger.log(eval_results)
@@ -236,12 +106,16 @@ def main():
     # parse arguments
     cfg = parse_args()
 
+    # Initialize random seeds
+    random.seed(cfg.drag.random_seed)
+    np.random.seed(cfg.drag.random_seed)
+
     # Changing the level of the logger
     logger.remove()  # Remove default handler.
     logger.add(sys.stderr, level=cfg.log_level)
 
     # run evaluation
-    run_simulation(cfg.model, cfg.data, cfg.drag)
+    run_simulation(cfg)
 
 
 if __name__ == "__main__":

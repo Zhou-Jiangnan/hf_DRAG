@@ -12,7 +12,7 @@ from sentence_transformers import SentenceTransformer
 from modules.data_types import Testcase
 
 
-class AdvancedQAEvaluator:
+class QAEvaluator:
     def __init__(self):
         """Initialize the evaluator with necessary models."""
         # Initialize ROUGE scorer
@@ -160,7 +160,7 @@ class AdvancedQAEvaluator:
             'bleu': [], 'rouge1': [], 'rouge2': [], 'rougeL': [],
             'semantic_similarity': [], 'length_ratio': [], 'length_difference': [],
             'edit_distance': [], 'normalized_edit_distance': [],
-            'bigram_overlap': [], 'trigram_overlap': [], 'retrieval_rate': [],
+            'bigram_overlap': [], 'trigram_overlap': [], 'avg_num_hops': [],
         }
 
         # Calculate metrics for each prediction-reference pair
@@ -201,10 +201,8 @@ class AdvancedQAEvaluator:
                 self.calculate_ngram_overlap(test_case.actual_output, test_case.expected_output, n=3)
             )
 
-            # Retrieval Rate
-            metrics['retrieval_rate'].append(
-                test_case.is_retrieval_answer * 1
-            )
+            # Average number of hops
+            metrics['avg_num_hops'].append(test_case.num_hops)
 
         # Calculate means and convert to percentages where appropriate
         results = {}
@@ -212,7 +210,7 @@ class AdvancedQAEvaluator:
             if metric in ['exact_match', 'precision', 'recall', 'f1',
                           'bleu', 'rouge1', 'rouge2', 'rougeL',
                           'semantic_similarity', 'normalized_edit_distance',
-                          'bigram_overlap', 'trigram_overlap', 'retrieval_rate']:
+                          'bigram_overlap', 'trigram_overlap']:
                 results[metric] = np.mean(values) * 100
             else:
                 results[metric] = np.mean(values)

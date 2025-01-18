@@ -1,7 +1,9 @@
 log_level: DEBUG  # DEBUG, INFO, WARNING, ERROR, etc.
 drag:
-  num_nodes: 10
-  retrieval_confidence_threshold: 1.0
-  retrieval_neighbor_num: 10
+  random_seed: 0
+  num_peers: 10
+  num_peer_attachments: 2
+  query_confidence_threshold: 0.8
+  num_query_neighbor: 2
+  query_ttl: 6
   log_every_n_steps: 10
-
