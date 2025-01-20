@@ -45,98 +45,286 @@ class DRAGNetwork:
             for peer_id in self.topic_peers[data_point.topic]:
                 self.peers[peer_id].add_knowledge(data_point)
 
-    def query(
+    def topic_query(
             self, 
             question: str, 
             query_peer_id: Optional[int] = None, 
             num_query_neighbor: int = 2,
             query_confidence_threshold: float = 0.5,
-            ttl: int = 6
+            max_ttl: int = 6
     ) -> DRAGAnswer:
         """
-        Queries the network for an answer to a question, spreading the query hop-by-hop.
+        Topic-based network query
 
         Args:
             question: The question to ask.
             query_peer_id: The ID of the peer initiating the query. If None, a random peer is selected.
             num_query_neighbor: The maximum number of neighbors to query at each hop.
             query_confidence_threshold: The confidence threshold required for an answer to be accepted.
-            ttl: The time-to-live for the query (maximum number of hops).
+            max_ttl: The time-to-live for the query (maximum number of hops).
 
         Returns:
             The answer to the question if found, otherwise None.
         """
+        # Track number of messages (queries) sent
+        num_messages = 0
 
         # Initialize query peer
         if query_peer_id is None:
             query_peer_id = random.choice(range(self.num_peers))
+            logger.info(f"Randomly selected starting peer: {query_peer_id}")
+        
+        logger.info(f"Starting topic-based search from peer {query_peer_id}")
+        logger.info(f"Parameters: num_neighbors={num_query_neighbor}, max_ttl={max_ttl}")
 
         # Determine the topic of the question first
         question_topic = self.peers[query_peer_id].parse_topic(question, self.all_topics)
-
-        # Use a queue for Breadth-First Search (BFS)
-        neighbor_id_queue = deque()
-        neighbor_id_queue.append(query_peer_id)
+        logger.info(f"Parsed question topic: {question_topic}")
 
         # Keep track of visited peers to avoid cycles
         visited_ids: Dict[int, bool] = {query_peer_id: True}
 
-        # Iterate through hops
-        for hop in range(ttl):
-            current_peer_id = neighbor_id_queue.popleft()
-            logger.debug(f"\Processing question [{question}] by peer [{current_peer_id}]")
+        # Queue for BFS: (peer_id, hop)
+        queue = deque([(query_peer_id, 0)])
 
-            # Query the current peer
+        # Perform topic-based search
+        while queue:
+            current_peer_id, hop = queue.popleft()
+
+            if hop >= max_ttl:
+                continue
+
+            logger.debug(f"Hop {hop}: Querying peer {current_peer_id}")
+
+            # Query the current peer and track message
             current_answer, relevant_knowledge, relevant_score = \
                 self.peers[current_peer_id].query(question, query_confidence_threshold)
+            num_messages += 1
+
             if current_answer is not None:
+                logger.info(f"Answer found at peer {current_peer_id} after {hop} hops")
+                logger.info(f"Total messages sent: {num_messages}")
                 answer = DRAGAnswer(
                     answer=str(current_answer),
                     relevant_knowledge=relevant_knowledge,
                     relevant_score=relevant_score,
-                    num_hops=hop
+                    num_hops=hop,
+                    num_messages=num_messages
                 )
-                logger.debug(f"\Got answer for question [{question}] by peer [{current_peer_id}]: {answer}")
                 return answer  # Return the answer if found
 
-            # Get neighbors of the current peer
+            # Get and prioritize neighbors
             current_neighbor_ids = list(self.network.neighbors(current_peer_id))
-
-            # Prioritize neighbors based on topic similarity
             picked_neighbor_ids = []
+
             if len(current_neighbor_ids) > num_query_neighbor:
-                
-                # Find neighbors whose topics match the question's topic
+                # Find topic-matched neighbors
                 topic_matched_neighbors = []
                 for neighbor_id in current_neighbor_ids:
                     if question_topic in self.peer_topics[neighbor_id]:
                         topic_matched_neighbors.append(neighbor_id)
+                logger.debug(f"Found {len(topic_matched_neighbors)} topic-matched neighbors")
 
-                # If more topic-matched neighbors than num_query_neighbor, select randomly
+                # Select neighbors based on topic matching
                 if len(topic_matched_neighbors) > num_query_neighbor:
                     picked_neighbor_ids = random.sample(topic_matched_neighbors, num_query_neighbor)
                 else:
                     picked_neighbor_ids = topic_matched_neighbors
-                    # Fill up with other neighbors if necessary
+                    # Fill remaining slots with random neighbors
                     remaining_neighbor_ids = list(set(current_neighbor_ids) - set(picked_neighbor_ids))
                     remaining_num = min(num_query_neighbor - len(picked_neighbor_ids), len(remaining_neighbor_ids))
                     picked_neighbor_ids += random.sample(remaining_neighbor_ids, remaining_num)
-            
             else:
-                # If not enough neighbors, take all
                 picked_neighbor_ids = current_neighbor_ids
 
-            # Add picked neighbors to the queue for the next hop
+            logger.debug(f"Selected neighbors for next hop: {picked_neighbor_ids}")
+
+            # Add picked neighbors to the queue
             for neighbor_id in picked_neighbor_ids:
                 if neighbor_id not in visited_ids:
                     visited_ids[neighbor_id] = True
-                    neighbor_id_queue.append(neighbor_id)
+                    queue.append((neighbor_id, hop + 1))
+                    logger.debug(f"Added neighbor {neighbor_id} to queue at Hop {hop + 1}")
 
-        # if no answer is found within the TTL
+        logger.info(f"Search failed after {max_ttl} hops")
+        logger.info(f"Total messages sent: {num_messages}")
+
+        # Return empty answer if no result found
         answer = DRAGAnswer(
             answer="",
             relevant_knowledge="",
             relevant_score=0.0,
-            num_hops=ttl
+            num_hops=max_ttl,
+            num_messages=num_messages
         )
         return answer
+
+    def random_walk_query(
+            self,
+            question: str,
+            query_peer_id: Optional[int] = None,
+            query_confidence_threshold: float = 0.5,
+            max_ttl: int = 6,
+            restart_probability: float = 0.1
+    ) -> DRAGAnswer:
+        """
+        Queries the network using a random walk algorithm with restart probability.
+        
+        Args:
+            question: The question to ask
+            query_peer_id: Starting peer ID (random if None)
+            query_confidence_threshold: Minimum confidence required for an answer
+            max_ttl: Maximum number of steps in the walk
+            restart_probability: Probability of restarting from the initial peer
+        
+        Returns:
+            DRAGAnswer object containing the response
+        """
+        # Track number of messages (queries) sent
+        num_messages = 0
+
+        # Initialize starting peer
+        if query_peer_id is None:
+            query_peer_id = random.choice(range(self.num_peers))
+            logger.info(f"Randomly selected starting peer: {query_peer_id}")
+        
+        current_peer_id = query_peer_id
+        initial_peer_id = query_peer_id
+        
+        # Keep track of path for debugging
+        path = [current_peer_id]
+
+        logger.info(f"Starting random walk search from peer {initial_peer_id}")
+        logger.info(f"Parameters: max_ttl={max_ttl}, restart_prob={restart_probability}")
+        
+        # Perform random walk
+        for hop in range(max_ttl):
+            logger.debug(f"Hop {hop}: Querying peer {current_peer_id}")
+            
+            # Query current peer
+            current_answer, relevant_knowledge, relevant_score = \
+                self.peers[current_peer_id].query(question, query_confidence_threshold)
+            num_messages += 1
+            
+            # Return if answer found
+            if current_answer is not None:
+                logger.info(f"Answer found at peer {current_peer_id} after {hop} hops")
+                logger.info(f"Total messages sent: {num_messages}")
+                return DRAGAnswer(
+                    answer=str(current_answer),
+                    relevant_knowledge=relevant_knowledge,
+                    relevant_score=relevant_score,
+                    num_hops=hop,
+                    num_messages=num_messages
+                )
+            
+            # Decide whether to restart
+            if random.random() < restart_probability:
+                current_peer_id = initial_peer_id
+                logger.debug(f"Random restart to initial peer: {initial_peer_id}")
+            else:
+                # Get neighbors and randomly select next peer
+                neighbors = list(self.network.neighbors(current_peer_id))
+                if not neighbors:
+                    logger.debug(f"Dead end at peer {current_peer_id}, restarting")
+                    current_peer_id = initial_peer_id
+                else:
+                    current_peer_id = random.choice(neighbors)
+                    logger.debug(f"Moving to neighbor peer {current_peer_id}")
+            
+            path.append(current_peer_id)
+        
+        logger.info(f"Search failed after {max_ttl} hops")
+        logger.info(f"Path taken: {path}")
+        logger.info(f"Total messages sent: {num_messages}")
+        
+        # Return empty answer if no result found
+        return DRAGAnswer(
+            answer="",
+            relevant_knowledge="",
+            relevant_score=0.0,
+            num_hops=max_ttl,
+            num_messages=num_messages
+        )
+
+    def flooding_query(
+            self,
+            question: str,
+            query_peer_id: Optional[int] = None,
+            query_confidence_threshold: float = 0.5,
+            max_ttl: int = 6
+    ) -> DRAGAnswer:
+        """
+        Queries the network using a flooding algorithm.
+        
+        Args:
+            question: The question to ask
+            query_peer_id: Starting peer ID (random if None)
+            query_confidence_threshold: Minimum confidence required for an answer
+            max_ttl: Maximum time-to-live (network depth to explore)
+        
+        Returns:
+            DRAGAnswer object containing the response
+        """
+        # Track number of messages (queries) sent
+        num_messages = 0
+
+        # Initialize starting peer
+        if query_peer_id is None:
+            query_peer_id = random.choice(range(self.num_peers))
+            logger.info(f"Randomly selected starting peer: {query_peer_id}")
+        
+        logger.info(f"Starting flooding search from peer {query_peer_id}")
+        logger.info(f"Parameters: max_ttl={max_ttl}")
+        
+        # Use set for visited nodes to avoid cycles
+        visited = {query_peer_id}
+        
+        # Queue for BFS: (peer_id, hop)
+        queue = deque([(query_peer_id, 0)])
+        
+        while queue:
+            current_peer_id, hop = queue.popleft()
+            
+            if hop >= max_ttl:
+                continue
+
+            logger.debug(f"Flooding at Hop {hop}, peer: {current_peer_id}")
+            
+            # Query current peer and track message
+            current_answer, relevant_knowledge, relevant_score = \
+                self.peers[current_peer_id].query(question, query_confidence_threshold)
+            num_messages += 1
+            
+            # Return if answer found
+            if current_answer is not None:
+                logger.debug(f"Answer found at peer {current_peer_id}, Hop {hop}")
+                logger.debug(f"Total messages sent: {num_messages}")
+                return DRAGAnswer(
+                    answer=str(current_answer),
+                    relevant_knowledge=relevant_knowledge,
+                    relevant_score=relevant_score,
+                    num_hops=hop,
+                    num_messages=num_messages
+                )
+            
+            # Add all unvisited neighbors to queue
+            neighbors = self.network.neighbors(current_peer_id)
+            for neighbor_id in neighbors:
+                if neighbor_id not in visited:
+                    visited.add(neighbor_id)
+                    queue.append((neighbor_id, hop + 1))
+                    logger.debug(f"Added neighbor {neighbor_id} to queue at Hop {hop + 1}")
+        
+        # Log search statistics
+        logger.info("Search failed to find answer")
+        logger.info(f"Total messages sent: {num_messages}")
+        
+        # Return empty answer if no result found
+        return DRAGAnswer(
+            answer="",
+            relevant_knowledge="",
+            relevant_score=0.0,
+            num_hops=max_ttl,
+            num_messages=num_messages
+        )

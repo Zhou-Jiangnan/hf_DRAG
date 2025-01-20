@@ -12,6 +12,7 @@ class DRAGAnswer(BaseModel):
     relevant_knowledge: str
     relevant_score: float
     num_hops: int
+    num_messages: int
 
 
 class Testcase(BaseModel):
@@ -21,3 +22,4 @@ class Testcase(BaseModel):
     relevant_knowledge: str
     relevant_score: float
     num_hops: int
+    num_messages: int

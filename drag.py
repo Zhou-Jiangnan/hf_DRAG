@@ -67,12 +67,27 @@ def run_simulation(cfg: Namespace):
 
     for idx, data_point in enumerate(tqdm(data_points, desc=f"Inferencing on {len(data_points)} test case(s)")):
         # Each question is processed by a random node
-        drag_answer = drag_net.query(
-            data_point.question, 
-            num_query_neighbor=num_query_neighbor, 
-            query_confidence_threshold=query_confidence_threshold,
-            ttl=query_ttl
-        )
+        if cfg.drag.search_algorithm == "TARW":
+            drag_answer = drag_net.topic_query(
+                data_point.question, 
+                num_query_neighbor=num_query_neighbor, 
+                query_confidence_threshold=query_confidence_threshold,
+                max_ttl=query_ttl
+            )
+        elif cfg.drag.search_algorithm == "RW":
+            drag_answer = drag_net.random_walk_query(
+                data_point.question,
+                query_confidence_threshold=query_confidence_threshold,
+                max_ttl=query_ttl
+            )
+        elif cfg.drag.search_algorithm == "FL":
+            drag_answer = drag_net.flooding_query(
+                data_point.question,
+                query_confidence_threshold=query_confidence_threshold,
+                max_ttl=query_ttl
+            )
+        else:
+            raise ValueError(f"Unkonw search algorithm: {cfg.drag.search_algorithm}")
 
         # test case
         test_case = Testcase(
@@ -82,6 +97,7 @@ def run_simulation(cfg: Namespace):
             relevant_knowledge=drag_answer.relevant_knowledge,
             relevant_score=drag_answer.relevant_score,
             num_hops=drag_answer.num_hops,
+            num_messages=drag_answer.num_messages
         )
         testcases_logger.log(test_case.model_dump())
         test_cases.append(test_case)

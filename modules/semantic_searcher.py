@@ -1,7 +1,5 @@
 from typing import List, Tuple
-import numpy as np
 from sentence_transformers import SentenceTransformer, util
-from sklearn.metrics.pairwise import cosine_similarity
 
 
 class SemanticSearcher:

@@ -24,12 +24,13 @@ def parse_args():
     parser.add_argument("--data.answer_path", type=str)
 
     parser.add_argument("--drag.random_seed", type=int)
+    parser.add_argument("--drag.log_every_n_steps", type=int)
     parser.add_argument("--drag.num_peers", type=int)
     parser.add_argument("--drag.num_peer_attachments", type=int)
+    parser.add_argument("--drag.search_algorithm", type=str)
     parser.add_argument("--drag.query_confidence_threshold", type=float)
     parser.add_argument("--drag.num_query_neighbor", type=int)
     parser.add_argument("--drag.query_ttl", type=int)
-    parser.add_argument("--drag.log_every_n_steps", type=int)
 
     parser.add_argument("--config", action="config")
 
