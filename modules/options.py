@@ -3,7 +3,7 @@ from jsonargparse import ArgumentParser
 def parse_args():
     parser = ArgumentParser(
         default_config_files=[
-            "./config/drag.yaml", 
+            "./config/rag.yaml", 
             "./config/llm/llama32_3b.yaml", 
             "./config/data/mmlu.yaml"
         ]
@@ -23,14 +23,16 @@ def parse_args():
     parser.add_argument("--data.choices_path", type=str)
     parser.add_argument("--data.answer_path", type=str)
 
-    parser.add_argument("--drag.random_seed", type=int)
-    parser.add_argument("--drag.log_every_n_steps", type=int)
-    parser.add_argument("--drag.num_peers", type=int)
-    parser.add_argument("--drag.num_peer_attachments", type=int)
-    parser.add_argument("--drag.search_algorithm", type=str)
-    parser.add_argument("--drag.query_confidence_threshold", type=float)
-    parser.add_argument("--drag.num_query_neighbor", type=int)
-    parser.add_argument("--drag.query_ttl", type=int)
+    parser.add_argument("--rag.random_seed", type=int)
+    parser.add_argument("--rag.log_every_n_steps", type=int)
+
+    parser.add_argument("--rag.network_type", type=str)
+    parser.add_argument("--rag.num_peers", type=int)
+    parser.add_argument("--rag.num_peer_attachments", type=int)
+    parser.add_argument("--rag.search_algorithm", type=str)
+    parser.add_argument("--rag.query_confidence_threshold", type=float)
+    parser.add_argument("--rag.num_query_neighbor", type=int)
+    parser.add_argument("--rag.query_ttl", type=int)
 
     parser.add_argument("--config", action="config")
 

@@ -6,7 +6,7 @@ from loguru import logger
 import networkx as nx
 from tqdm import tqdm
 
-from modules.data_types import DRAGAnswer, Datapoint
+from modules.data_types import RAGAnswer, Datapoint
 from modules.peer import Peer
 
 
@@ -52,7 +52,7 @@ class DRAGNetwork:
             num_query_neighbor: int = 2,
             query_confidence_threshold: float = 0.5,
             max_ttl: int = 6
-    ) -> DRAGAnswer:
+    ) -> RAGAnswer:
         """
         Topic-based network query
 
@@ -104,7 +104,7 @@ class DRAGNetwork:
             if current_answer is not None:
                 logger.info(f"Answer found at peer {current_peer_id} after {hop} hops")
                 logger.info(f"Total messages sent: {num_messages}")
-                answer = DRAGAnswer(
+                answer = RAGAnswer(
                     answer=str(current_answer),
                     relevant_knowledge=relevant_knowledge,
                     relevant_score=relevant_score,
@@ -150,7 +150,7 @@ class DRAGNetwork:
         logger.info(f"Total messages sent: {num_messages}")
 
         # Return empty answer if no result found
-        answer = DRAGAnswer(
+        answer = RAGAnswer(
             answer="",
             relevant_knowledge="",
             relevant_score=0.0,
@@ -166,7 +166,7 @@ class DRAGNetwork:
             query_confidence_threshold: float = 0.5,
             max_ttl: int = 6,
             restart_probability: float = 0.1
-    ) -> DRAGAnswer:
+    ) -> RAGAnswer:
         """
         Queries the network using a random walk algorithm with restart probability.
         
@@ -178,7 +178,7 @@ class DRAGNetwork:
             restart_probability: Probability of restarting from the initial peer
         
         Returns:
-            DRAGAnswer object containing the response
+            RAGAnswer object containing the response
         """
         # Track number of messages (queries) sent
         num_messages = 0
@@ -210,7 +210,7 @@ class DRAGNetwork:
             if current_answer is not None:
                 logger.info(f"Answer found at peer {current_peer_id} after {hop} hops")
                 logger.info(f"Total messages sent: {num_messages}")
-                return DRAGAnswer(
+                return RAGAnswer(
                     answer=str(current_answer),
                     relevant_knowledge=relevant_knowledge,
                     relevant_score=relevant_score,
@@ -239,7 +239,7 @@ class DRAGNetwork:
         logger.info(f"Total messages sent: {num_messages}")
         
         # Return empty answer if no result found
-        return DRAGAnswer(
+        return RAGAnswer(
             answer="",
             relevant_knowledge="",
             relevant_score=0.0,
@@ -253,7 +253,7 @@ class DRAGNetwork:
             query_peer_id: Optional[int] = None,
             query_confidence_threshold: float = 0.5,
             max_ttl: int = 6
-    ) -> DRAGAnswer:
+    ) -> RAGAnswer:
         """
         Queries the network using a flooding algorithm.
         
@@ -264,7 +264,7 @@ class DRAGNetwork:
             max_ttl: Maximum time-to-live (network depth to explore)
         
         Returns:
-            DRAGAnswer object containing the response
+            RAGAnswer object containing the response
         """
         # Track number of messages (queries) sent
         num_messages = 0
@@ -300,7 +300,7 @@ class DRAGNetwork:
             if current_answer is not None:
                 logger.debug(f"Answer found at peer {current_peer_id}, Hop {hop}")
                 logger.debug(f"Total messages sent: {num_messages}")
-                return DRAGAnswer(
+                return RAGAnswer(
                     answer=str(current_answer),
                     relevant_knowledge=relevant_knowledge,
                     relevant_score=relevant_score,
@@ -321,10 +321,67 @@ class DRAGNetwork:
         logger.info(f"Total messages sent: {num_messages}")
         
         # Return empty answer if no result found
-        return DRAGAnswer(
+        return RAGAnswer(
             answer="",
             relevant_knowledge="",
             relevant_score=0.0,
             num_hops=max_ttl,
             num_messages=num_messages
+        )
+
+
+class CRAGNetwork:
+    def __init__(self, llm_url: str, llm_name: str):
+        self.peer = Peer(0, llm_url, llm_name)
+
+    def init_knowledge(self, data_points: List[Datapoint]):
+        """
+        Distributes data points to peers based on their topics (Uniform).
+
+        Args:
+            data_points: A list of Datapoint objects.
+        """
+        # Distribute data points to peers based on assigned topics
+        for data_point in tqdm(data_points, desc=f"Distributing data points to peers"):
+            self.peer.add_knowledge(data_point)
+
+    def query(
+            self,
+            question: str,
+            query_confidence_threshold: float = 0.5
+    ) -> RAGAnswer:
+        """
+        Queries the network using a random walk algorithm with restart probability.
+        
+        Args:
+            question: The question to ask
+            query_confidence_threshold: Minimum confidence required for an answer
+        
+        Returns:
+            RAGAnswer object containing the response
+        """
+        # Query current peer
+        current_answer, relevant_knowledge, relevant_score = \
+            self.peer.query(question, query_confidence_threshold)
+
+        # Return if answer found
+        if current_answer is not None:
+            logger.info(f"Answer found at peer 0")
+            return RAGAnswer(
+                answer=str(current_answer),
+                relevant_knowledge=relevant_knowledge,
+                relevant_score=relevant_score,
+                num_hops=0,
+                num_messages=0
+            )
+            
+        logger.info(f"Search failed")
+        
+        # Return empty answer if no result found
+        return RAGAnswer(
+            answer="",
+            relevant_knowledge="",
+            relevant_score=0.0,
+            num_hops=0,
+            num_messages=0
         )

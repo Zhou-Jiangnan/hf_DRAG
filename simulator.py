@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from modules.csv_logger import CSVLogger
 from modules.data_types import Datapoint, Testcase
-from modules.drag_network import DRAGNetwork
+from modules.rag_network import DRAGNetwork, CRAGNetwork
 from modules.evaluator import QAEvaluator
 from modules.options import parse_args
 
@@ -53,57 +53,67 @@ def run_simulation(cfg: Namespace):
         data_points.append(data_point)
 
     # Initialize DRAG parameters
-    query_confidence_threshold = cfg.drag.query_confidence_threshold
-    num_query_neighbor = min(cfg.drag.num_query_neighbor, cfg.drag.num_peers - 1)
-    query_ttl = cfg.drag.query_ttl
+    query_confidence_threshold = cfg.rag.query_confidence_threshold
+    num_query_neighbor = min(cfg.rag.num_query_neighbor, cfg.rag.num_peers - 1)
+    query_ttl = cfg.rag.query_ttl
 
-    # Initialize DRAG network with peers and knowledges
-    drag_net = DRAGNetwork(cfg.drag.num_peers, cfg.drag.num_peer_attachments, cfg.llm.base_url, cfg.llm.name)
-    drag_net.init_knowledge(data_points)
+    # Initialize RAG network with peers and knowledges
+    if cfg.rag.network_type == "DRAG":
+        rag_net = DRAGNetwork(cfg.rag.num_peers, cfg.rag.num_peer_attachments, cfg.llm.base_url, cfg.llm.name)
+    elif cfg.rag.network_type == "CRAG":
+        rag_net = CRAGNetwork(cfg.llm.base_url, cfg.llm.name)
+    rag_net.init_knowledge(data_points)
 
     # Run evaluation
     qa_evaluator = QAEvaluator()
     test_cases = []
 
     for idx, data_point in enumerate(tqdm(data_points, desc=f"Inferencing on {len(data_points)} test case(s)")):
-        # Each question is processed by a random node
-        if cfg.drag.search_algorithm == "TARW":
-            drag_answer = drag_net.topic_query(
-                data_point.question, 
-                num_query_neighbor=num_query_neighbor, 
-                query_confidence_threshold=query_confidence_threshold,
-                max_ttl=query_ttl
-            )
-        elif cfg.drag.search_algorithm == "RW":
-            drag_answer = drag_net.random_walk_query(
+        if cfg.rag.network_type == "DRAG":
+            if cfg.rag.search_algorithm == "TARW":
+                rag_answer = rag_net.topic_query(
+                    data_point.question, 
+                    num_query_neighbor=num_query_neighbor, 
+                    query_confidence_threshold=query_confidence_threshold,
+                    max_ttl=query_ttl
+                )
+            elif cfg.rag.search_algorithm == "RW":
+                rag_answer = rag_net.random_walk_query(
+                    data_point.question,
+                    query_confidence_threshold=query_confidence_threshold,
+                    max_ttl=query_ttl
+                )
+            elif cfg.rag.search_algorithm == "FL":
+                rag_answer = rag_net.flooding_query(
+                    data_point.question,
+                    query_confidence_threshold=query_confidence_threshold,
+                    max_ttl=query_ttl
+                )
+            else:
+                raise ValueError(f"Unkonw search algorithm: {cfg.rag.search_algorithm}")
+        elif cfg.rag.network_type == "CRAG":
+            rag_answer = rag_net.query(
                 data_point.question,
-                query_confidence_threshold=query_confidence_threshold,
-                max_ttl=query_ttl
-            )
-        elif cfg.drag.search_algorithm == "FL":
-            drag_answer = drag_net.flooding_query(
-                data_point.question,
-                query_confidence_threshold=query_confidence_threshold,
-                max_ttl=query_ttl
+                query_confidence_threshold=query_confidence_threshold
             )
         else:
-            raise ValueError(f"Unkonw search algorithm: {cfg.drag.search_algorithm}")
+            raise ValueError(f"Unknown network type: {cfg.rag.network_type}")
 
         # test case
         test_case = Testcase(
             question=data_point.question,
             expected_output=data_point.answer,
-            actual_output=drag_answer.answer,
-            relevant_knowledge=drag_answer.relevant_knowledge,
-            relevant_score=drag_answer.relevant_score,
-            num_hops=drag_answer.num_hops,
-            num_messages=drag_answer.num_messages
+            actual_output=rag_answer.answer,
+            relevant_knowledge=rag_answer.relevant_knowledge,
+            relevant_score=rag_answer.relevant_score,
+            num_hops=rag_answer.num_hops,
+            num_messages=rag_answer.num_messages
         )
         testcases_logger.log(test_case.model_dump())
         test_cases.append(test_case)
 
         # log evaluation results regularly
-        if idx % cfg.drag.log_every_n_steps == 0:
+        if idx % cfg.rag.log_every_n_steps == 0:
             testcases_logger.save()
             eval_results = qa_evaluator.evaluate(test_cases)
             metrics_logger.log(eval_results)
@@ -123,8 +133,8 @@ def main():
     cfg = parse_args()
 
     # Initialize random seeds
-    random.seed(cfg.drag.random_seed)
-    np.random.seed(cfg.drag.random_seed)
+    random.seed(cfg.rag.random_seed)
+    np.random.seed(cfg.rag.random_seed)
 
     # Changing the level of the logger
     logger.remove()  # Remove default handler.

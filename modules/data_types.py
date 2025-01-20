@@ -7,7 +7,7 @@ class Datapoint(BaseModel):
     answer: str
 
 
-class DRAGAnswer(BaseModel):
+class RAGAnswer(BaseModel):
     answer: str
     relevant_knowledge: str
     relevant_score: float
