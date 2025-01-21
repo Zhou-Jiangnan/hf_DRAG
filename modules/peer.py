@@ -8,9 +8,9 @@ from modules.llm import LLM
 
 
 class Peer:
-    def __init__(self, peer_id: int, llm_url: str, llm_name: str):
+    def __init__(self, peer_id: int, llm_url: str, llm_name: str, llm_seed: int):
         self.peer_id = peer_id
-        self.llm = LLM(llm_url, llm_name)
+        self.llm = LLM(llm_url, llm_name, llm_seed)
         self.knowledge_base = KnowledgeBase()
     
     def add_knowledge(self, data_point: Datapoint):

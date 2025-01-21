@@ -11,10 +11,10 @@ from modules.peer import Peer
 
 
 class DRAGNetwork:
-    def __init__(self, num_peers: int, num_peer_attachments: int, llm_url: str, llm_name: str):
+    def __init__(self, num_peers: int, num_peer_attachments: int, llm_url: str, llm_name: str, llm_seed: int):
         self.num_peers = num_peers
         self.network = nx.barabasi_albert_graph(num_peers, num_peer_attachments)
-        self.peers = [Peer(peer_id, llm_url, llm_name) for peer_id in range(num_peers)]
+        self.peers = [Peer(peer_id, llm_url, llm_name, llm_seed) for peer_id in range(num_peers)]
 
         self.peer_topics: Dict[int, List[str]] = {peer_id: [] for peer_id in range(self.num_peers)}
         self.topic_peers: Dict[str, List[int]] = {}
@@ -331,8 +331,8 @@ class DRAGNetwork:
 
 
 class CRAGNetwork:
-    def __init__(self, llm_url: str, llm_name: str):
-        self.peer = Peer(0, llm_url, llm_name)
+    def __init__(self, llm_url: str, llm_name: str, llm_seed: int):
+        self.peer = Peer(0, llm_url, llm_name, llm_seed)
 
     def init_knowledge(self, data_points: List[Datapoint]):
         """

@@ -59,9 +59,10 @@ def run_simulation(cfg: Namespace):
 
     # Initialize RAG network with peers and knowledges
     if cfg.rag.network_type == "DRAG":
-        rag_net = DRAGNetwork(cfg.rag.num_peers, cfg.rag.num_peer_attachments, cfg.llm.base_url, cfg.llm.name)
+        rag_net = DRAGNetwork(cfg.rag.num_peers, cfg.rag.num_peer_attachments, cfg.llm.base_url, cfg.llm.name, 
+                              cfg.rag.random_seed)
     elif cfg.rag.network_type == "CRAG":
-        rag_net = CRAGNetwork(cfg.llm.base_url, cfg.llm.name)
+        rag_net = CRAGNetwork(cfg.llm.base_url, cfg.llm.name, cfg.rag.random_seed)
     rag_net.init_knowledge(data_points)
 
     # Run evaluation

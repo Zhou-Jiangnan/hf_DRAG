@@ -17,7 +17,7 @@ class KnowledgeBase:
         if len(self.knowledges) == 0:
             return "", 0.0
 
-        knowledge_sentences = [f"[Question]: {data_point.question} [Answer]: {data_point.answer}"
+        knowledge_sentences = [f"# Question:\n{data_point.question}\n# Correct Answer:\n{data_point.answer}\n"
                            for data_point in self.knowledges]
         relevant_knowledge, relevant_score = self.semantic_searcher.search(knowledge_sentences, question)[0]
         return relevant_knowledge, relevant_score
