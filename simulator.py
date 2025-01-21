@@ -40,8 +40,11 @@ def run_simulation(cfg: Namespace):
     # - ogqa for Open Generative Question Answering
     task_type = cfg.data.task_type
 
-    # random pick 20 samples for testing
-    for _, item in enumerate(dataset.take(20)):
+    # Only pick 20 samples from dataset for test mode
+    if cfg.rag.test_mode == True:
+        dataset = dataset.take(20)
+
+    for item in dataset:
         topic = get_dict_val(item, cfg.data.topic_path)
         question = get_dict_val(item, cfg.data.question_path)
         answer = get_dict_val(item, cfg.data.answer_path)

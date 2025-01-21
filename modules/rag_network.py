@@ -72,14 +72,14 @@ class DRAGNetwork:
         # Initialize query peer
         if query_peer_id is None:
             query_peer_id = random.choice(range(self.num_peers))
-            logger.info(f"Randomly selected starting peer: {query_peer_id}")
+            logger.debug(f"Randomly selected starting peer: {query_peer_id}")
         
-        logger.info(f"Starting topic-based search from peer {query_peer_id}")
-        logger.info(f"Parameters: num_neighbors={num_query_neighbor}, max_ttl={max_ttl}")
+        logger.debug(f"Starting topic-based search from peer {query_peer_id}")
+        logger.debug(f"Parameters: num_neighbors={num_query_neighbor}, max_ttl={max_ttl}")
 
         # Determine the topic of the question first
         question_topic = self.peers[query_peer_id].parse_topic(question, self.all_topics)
-        logger.info(f"Parsed question topic: {question_topic}")
+        logger.debug(f"Parsed question topic: {question_topic}")
 
         # Keep track of visited peers to avoid cycles
         visited_ids: Dict[int, bool] = {query_peer_id: True}
@@ -102,8 +102,8 @@ class DRAGNetwork:
             num_messages += 1
 
             if current_answer is not None:
-                logger.info(f"Answer found at peer {current_peer_id} after {hop} hops")
-                logger.info(f"Total messages sent: {num_messages}")
+                logger.debug(f"Answer found at peer {current_peer_id} after {hop} hops")
+                logger.debug(f"Total messages sent: {num_messages}")
                 answer = RAGAnswer(
                     answer=str(current_answer),
                     relevant_knowledge=relevant_knowledge,
@@ -146,8 +146,8 @@ class DRAGNetwork:
                     queue.append((neighbor_id, hop + 1))
                     logger.debug(f"Added neighbor {neighbor_id} to queue at Hop {hop + 1}")
 
-        logger.info(f"Search failed after {max_ttl} hops")
-        logger.info(f"Total messages sent: {num_messages}")
+        logger.debug(f"Search failed after {max_ttl} hops")
+        logger.debug(f"Total messages sent: {num_messages}")
 
         # Return empty answer if no result found
         answer = RAGAnswer(
@@ -186,7 +186,7 @@ class DRAGNetwork:
         # Initialize starting peer
         if query_peer_id is None:
             query_peer_id = random.choice(range(self.num_peers))
-            logger.info(f"Randomly selected starting peer: {query_peer_id}")
+            logger.debug(f"Randomly selected starting peer: {query_peer_id}")
         
         current_peer_id = query_peer_id
         initial_peer_id = query_peer_id
@@ -194,8 +194,8 @@ class DRAGNetwork:
         # Keep track of path for debugging
         path = [current_peer_id]
 
-        logger.info(f"Starting random walk search from peer {initial_peer_id}")
-        logger.info(f"Parameters: max_ttl={max_ttl}, restart_prob={restart_probability}")
+        logger.debug(f"Starting random walk search from peer {initial_peer_id}")
+        logger.debug(f"Parameters: max_ttl={max_ttl}, restart_prob={restart_probability}")
         
         # Perform random walk
         for hop in range(max_ttl):
@@ -208,8 +208,8 @@ class DRAGNetwork:
             
             # Return if answer found
             if current_answer is not None:
-                logger.info(f"Answer found at peer {current_peer_id} after {hop} hops")
-                logger.info(f"Total messages sent: {num_messages}")
+                logger.debug(f"Answer found at peer {current_peer_id} after {hop} hops")
+                logger.debug(f"Total messages sent: {num_messages}")
                 return RAGAnswer(
                     answer=str(current_answer),
                     relevant_knowledge=relevant_knowledge,
@@ -234,9 +234,9 @@ class DRAGNetwork:
             
             path.append(current_peer_id)
         
-        logger.info(f"Search failed after {max_ttl} hops")
-        logger.info(f"Path taken: {path}")
-        logger.info(f"Total messages sent: {num_messages}")
+        logger.debug(f"Search failed after {max_ttl} hops")
+        logger.debug(f"Path taken: {path}")
+        logger.debug(f"Total messages sent: {num_messages}")
         
         # Return empty answer if no result found
         return RAGAnswer(
@@ -272,10 +272,10 @@ class DRAGNetwork:
         # Initialize starting peer
         if query_peer_id is None:
             query_peer_id = random.choice(range(self.num_peers))
-            logger.info(f"Randomly selected starting peer: {query_peer_id}")
+            logger.debug(f"Randomly selected starting peer: {query_peer_id}")
         
-        logger.info(f"Starting flooding search from peer {query_peer_id}")
-        logger.info(f"Parameters: max_ttl={max_ttl}")
+        logger.debug(f"Starting flooding search from peer {query_peer_id}")
+        logger.debug(f"Parameters: max_ttl={max_ttl}")
         
         # Use set for visited nodes to avoid cycles
         visited = {query_peer_id}
@@ -317,8 +317,8 @@ class DRAGNetwork:
                     logger.debug(f"Added neighbor {neighbor_id} to queue at Hop {hop + 1}")
         
         # Log search statistics
-        logger.info("Search failed to find answer")
-        logger.info(f"Total messages sent: {num_messages}")
+        logger.debug("Search failed to find answer")
+        logger.debug(f"Total messages sent: {num_messages}")
         
         # Return empty answer if no result found
         return RAGAnswer(
@@ -366,7 +366,7 @@ class CRAGNetwork:
 
         # Return if answer found
         if current_answer is not None:
-            logger.info(f"Answer found at peer 0")
+            logger.debug(f"Answer found at peer 0")
             return RAGAnswer(
                 answer=str(current_answer),
                 relevant_knowledge=relevant_knowledge,
@@ -375,7 +375,7 @@ class CRAGNetwork:
                 num_messages=0
             )
             
-        logger.info(f"Search failed")
+        logger.debug(f"Search failed")
         
         # Return empty answer if no result found
         return RAGAnswer(

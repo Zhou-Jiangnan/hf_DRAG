@@ -25,6 +25,7 @@ def parse_args():
 
     parser.add_argument("--rag.random_seed", type=int)
     parser.add_argument("--rag.log_every_n_steps", type=int)
+    parser.add_argument("--rag.test_mode", type=bool)
 
     parser.add_argument("--rag.network_type", type=str)
     parser.add_argument("--rag.num_peers", type=int)
