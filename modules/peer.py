@@ -54,7 +54,11 @@ class Peer:
         extracted_topic = llm_response.get("topic", None)
         return extracted_topic
 
-    def query(self, question: str, query_confidence_threshold: float) -> Tuple[Optional[str], str, float, bool]:
+    def query(
+            self, 
+            question: str, 
+            query_confidence_threshold: float
+    ) -> Tuple[Optional[str], Optional[str], float, bool]:
         """
         Queries the peer's knowledge base for an answer to the given question.
 
@@ -65,27 +69,37 @@ class Peer:
         Returns:
             A tuple containing:
             - The LLM's generated answer (or None if no answer is found).
-            - The most relevant knowledge found in the knowledge base (or "" if nothing relevant is found).
+            - The most relevant knowledge found in the knowledge base (or None if nothing relevant is found).
             - The relevance score of the retrieved knowledge.
             - A boolean indicating whether the query was a hit (True) or a miss (False) based on the confidence 
                 threshold.
         """
         # Look up relevant knowledge in the local knowledge base using semantic search.
-        relevant_knowledge, relevance_score = self.knowledge_base.semantic_search(question)
+        top_results = self.knowledge_base.semantic_search(question, 1)
+        
+        if len(top_results) == 0:
+            return None, None, 0.0, False
+        
+        # Only pick the top-1 data point
+        relevant_data_point, relevance_score = top_results[0]
 
         # Check if the relevance score meets the confidence threshold.
         if relevance_score > query_confidence_threshold:
             # Construct a prompt for the LLM to generate an answer based on the relevant knowledge.
             template_environment = Environment(loader=FileSystemLoader(searchpath="./templates"))
             answer_template = template_environment.get_template("generate_answer.tmpl")
-            llm_prompt = answer_template.render(question=question, context=relevant_knowledge)
+            llm_prompt = answer_template.render(
+                question=question, 
+                ref_question=relevant_data_point.question, 
+                ref_answer=relevant_data_point.answer
+            )
 
             # Invoke the LLM to generate an answer.
             llm_response = self.llm.generate(llm_prompt)
 
             # Extract the generated answer from the LLM's response.
             generated_answer = llm_response.get("answer", None)
-            return generated_answer, relevant_knowledge, relevance_score, True
+            return generated_answer, relevant_data_point.model_dump_json(), relevance_score, True
 
         # If the confidence threshold is not met, return None for the answer and indicate a query miss.
-        return None, relevant_knowledge, relevance_score, False
+        return None, relevant_data_point.model_dump_json(), relevance_score, False
