@@ -75,7 +75,6 @@ def run_simulation(cfg: Namespace):
 
     # Run evaluation
     qa_evaluator = QAEvaluator()
-    test_cases = []
 
     for idx, data_point in enumerate(tqdm(data_points, desc=f"Inferencing on {len(data_points)} test case(s)")):
         if cfg.rag.network_type == "DRAG":
@@ -120,18 +119,18 @@ def run_simulation(cfg: Namespace):
             is_query_hit=rag_answer.is_query_hit
         )
         test_cases_logger.log(test_case.model_dump())
-        test_cases.append(test_case)
+        qa_evaluator.add(test_case)
 
         # log evaluation results regularly
         if idx % cfg.rag.log_every_n_steps == 0:
             test_cases_logger.save()
-            eval_results = qa_evaluator.evaluate(test_cases)
+            eval_results = qa_evaluator.get_results()
             metrics_logger.log(eval_results)
             metrics_logger.save()
 
     # log final results
     test_cases_logger.save()
-    eval_results = qa_evaluator.evaluate(test_cases)
+    eval_results = qa_evaluator.get_results()
     metrics_logger.log(eval_results)
     metrics_logger.save()
 

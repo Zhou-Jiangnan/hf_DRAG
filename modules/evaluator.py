@@ -21,6 +21,18 @@ class QAEvaluator:
         )
         # Initialize semantic similarity model
         self.semantic_model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+        # Initialize containers for each metric
+        self.metrics = {
+            'exact_match': [], 'precision': [], 'recall': [], 'f1': [],
+            'bleu': [], 'rouge1': [], 'rouge2': [], 'rougeL': [],
+            'semantic_similarity': [], 'length_ratio': [], 'length_difference': [],
+            'edit_distance': [], 'normalized_edit_distance': [],
+            'bigram_overlap': [], 'trigram_overlap': [], 'avg_num_hops': [],
+            'avg_num_messages': [], 'avg_query_hit': []
+        }
+        self.percentage_metrics = ['exact_match', 'precision', 'recall', 'f1', 'bleu', 
+        'rouge1', 'rouge2', 'rougeL', 'semantic_similarity', 'normalized_edit_distance',
+        'bigram_overlap', 'trigram_overlap']
 
     def normalize_text(self, text: str) -> str:
         """Normalize text by removing articles, punctuation, and extra whitespace."""
@@ -143,83 +155,60 @@ class QAEvaluator:
         total = len(pred_ngrams | ref_ngrams)
 
         return overlap / total if total > 0 else 0.0
+    
+    def add(self, test_case: Testcase):
+        # Basic metrics
+        basic = self.calculate_basic_metrics(test_case.actual_output, test_case.expected_output)
+        for k, v in basic.items():
+            self.metrics[k].append(v)
 
-    def evaluate(self, test_cases: List[Testcase]) -> Dict[str, float]:
-        """
-        Evaluate predictions against references using multiple metrics.
+        # BLEU
+        self.metrics['bleu'].append(self.calculate_bleu(test_case.actual_output, test_case.expected_output))
 
-        Args:
-            test_cases: List[Testcase], List of test cases
+        # ROUGE scores
+        rouge = self.calculate_rouge(test_case.actual_output, test_case.expected_output)
+        for k, v in rouge.items():
+            self.metrics[k].append(v)
 
-        Returns:
-            Dictionary containing all evaluation metrics
-        """
-        # Initialize containers for each metric
-        metrics = {
-            'exact_match': [], 'precision': [], 'recall': [], 'f1': [],
-            'bleu': [], 'rouge1': [], 'rouge2': [], 'rougeL': [],
-            'semantic_similarity': [], 'length_ratio': [], 'length_difference': [],
-            'edit_distance': [], 'normalized_edit_distance': [],
-            'bigram_overlap': [], 'trigram_overlap': [], 'avg_num_hops': [],
-            'avg_num_messages': [], 'avg_query_hit': []
-        }
+        # Semantic similarity
+        self.metrics['semantic_similarity'].append(
+            self.calculate_semantic_similarity(test_case.actual_output, test_case.expected_output)
+        )
 
-        # Calculate metrics for each prediction-reference pair
-        for test_case in test_cases:
-            # Basic metrics
-            basic = self.calculate_basic_metrics(test_case.actual_output, test_case.expected_output)
-            for k, v in basic.items():
-                metrics[k].append(v)
+        # Length metrics
+        length = self.calculate_length_metrics(test_case.actual_output, test_case.expected_output)
+        for k, v in length.items():
+            self.metrics[k].append(v)
 
-            # BLEU
-            metrics['bleu'].append(self.calculate_bleu(test_case.actual_output, test_case.expected_output))
+        # Edit distance
+        edit = self.calculate_edit_distance(test_case.actual_output, test_case.expected_output)
+        for k, v in edit.items():
+            self.metrics[k].append(v)
 
-            # ROUGE scores
-            rouge = self.calculate_rouge(test_case.actual_output, test_case.expected_output)
-            for k, v in rouge.items():
-                metrics[k].append(v)
+        # N-gram overlap
+        self.metrics['bigram_overlap'].append(
+            self.calculate_ngram_overlap(test_case.actual_output, test_case.expected_output, n=2)
+        )
+        self.metrics['trigram_overlap'].append(
+            self.calculate_ngram_overlap(test_case.actual_output, test_case.expected_output, n=3)
+        )
 
-            # Semantic similarity
-            metrics['semantic_similarity'].append(
-                self.calculate_semantic_similarity(test_case.actual_output, test_case.expected_output)
-            )
+        # Average number of hops
+        self.metrics['avg_num_hops'].append(test_case.num_hops)
 
-            # Length metrics
-            length = self.calculate_length_metrics(test_case.actual_output, test_case.expected_output)
-            for k, v in length.items():
-                metrics[k].append(v)
+        # Average number of messages
+        self.metrics['avg_num_messages'].append(test_case.num_messages)
 
-            # Edit distance
-            edit = self.calculate_edit_distance(test_case.actual_output, test_case.expected_output)
-            for k, v in edit.items():
-                metrics[k].append(v)
+        # Average query hit rate
+        self.metrics['avg_query_hit'].append(test_case.is_query_hit * 1)
 
-            # N-gram overlap
-            metrics['bigram_overlap'].append(
-                self.calculate_ngram_overlap(test_case.actual_output, test_case.expected_output, n=2)
-            )
-            metrics['trigram_overlap'].append(
-                self.calculate_ngram_overlap(test_case.actual_output, test_case.expected_output, n=3)
-            )
 
-            # Average number of hops
-            metrics['avg_num_hops'].append(test_case.num_hops)
-
-            # Average number of messages
-            metrics['avg_num_messages'].append(test_case.num_messages)
-
-            # Average query hit rate
-            metrics['avg_query_hit'].append(test_case.is_query_hit * 1)
-
+    def get_results(self) -> Dict[str, float]:
         # Calculate means and convert to percentages where appropriate
         results = {}
-        for metric, values in metrics.items():
-            if metric in ['exact_match', 'precision', 'recall', 'f1',
-                          'bleu', 'rouge1', 'rouge2', 'rougeL',
-                          'semantic_similarity', 'normalized_edit_distance',
-                          'bigram_overlap', 'trigram_overlap']:
+        for metric, values in self.metrics.items():
+            if metric in self.percentage_metrics:
                 results[metric] = np.mean(values) * 100
             else:
                 results[metric] = np.mean(values)
-
         return results
