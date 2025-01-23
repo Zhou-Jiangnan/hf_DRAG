@@ -1,7 +1,0 @@
-data:
-  load:
-    path: mandarjoshi/trivia_qa
-    name: rc.nocontext
-    split: validation
-  question_path: question
-  answer_path: answer.value

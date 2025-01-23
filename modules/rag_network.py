@@ -82,7 +82,7 @@ class DRAGNetwork:
         logger.debug(f"Parsed question topic: {question_topic}")
 
         # Keep track of visited peers to avoid cycles
-        visited_ids: Dict[int, bool] = {query_peer_id: True}
+        visited_ids = {query_peer_id}
 
         # Queue for BFS: (peer_id, hop)
         queue = deque([(query_peer_id, 0)])
@@ -143,7 +143,7 @@ class DRAGNetwork:
             # Add picked neighbors to the queue
             for neighbor_id in picked_neighbor_ids:
                 if neighbor_id not in visited_ids:
-                    visited_ids[neighbor_id] = True
+                    visited_ids.add(neighbor_id)
                     queue.append((neighbor_id, hop + 1))
                     logger.debug(f"Added neighbor {neighbor_id} to queue at Hop {hop + 1}")
 
@@ -282,7 +282,7 @@ class DRAGNetwork:
         logger.debug(f"Parameters: max_ttl={max_ttl}")
         
         # Use set for visited nodes to avoid cycles
-        visited = {query_peer_id}
+        visited_ids = {query_peer_id}
         
         # Queue for BFS: (peer_id, hop)
         queue = deque([(query_peer_id, 0)])
@@ -316,8 +316,8 @@ class DRAGNetwork:
             # Add all unvisited neighbors to queue
             neighbors = self.network.neighbors(current_peer_id)
             for neighbor_id in neighbors:
-                if neighbor_id not in visited:
-                    visited.add(neighbor_id)
+                if neighbor_id not in visited_ids:
+                    visited_ids.add(neighbor_id)
                     queue.append((neighbor_id, hop + 1))
                     logger.debug(f"Added neighbor {neighbor_id} to queue at Hop {hop + 1}")
         
