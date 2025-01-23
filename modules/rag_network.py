@@ -97,7 +97,7 @@ class DRAGNetwork:
             logger.debug(f"Hop {hop}: Querying peer {current_peer_id}")
 
             # Query the current peer and track message
-            current_answer, relevant_knowledge, relevant_score = \
+            current_answer, relevant_knowledge, relevant_score, is_query_hit = \
                 self.peers[current_peer_id].query(question, query_confidence_threshold)
             num_messages += 1
 
@@ -109,7 +109,8 @@ class DRAGNetwork:
                     relevant_knowledge=relevant_knowledge,
                     relevant_score=relevant_score,
                     num_hops=hop,
-                    num_messages=num_messages
+                    num_messages=num_messages,
+                    is_query_hit=is_query_hit
                 )
                 return answer  # Return the answer if found
 
@@ -155,7 +156,8 @@ class DRAGNetwork:
             relevant_knowledge="",
             relevant_score=0.0,
             num_hops=max_ttl,
-            num_messages=num_messages
+            num_messages=num_messages,
+            is_query_hit=False
         )
         return answer
 
@@ -202,7 +204,7 @@ class DRAGNetwork:
             logger.debug(f"Hop {hop}: Querying peer {current_peer_id}")
             
             # Query current peer
-            current_answer, relevant_knowledge, relevant_score = \
+            current_answer, relevant_knowledge, relevant_score, is_query_hit = \
                 self.peers[current_peer_id].query(question, query_confidence_threshold)
             num_messages += 1
             
@@ -215,7 +217,8 @@ class DRAGNetwork:
                     relevant_knowledge=relevant_knowledge,
                     relevant_score=relevant_score,
                     num_hops=hop,
-                    num_messages=num_messages
+                    num_messages=num_messages,
+                    is_query_hit=is_query_hit
                 )
             
             # Decide whether to restart
@@ -244,7 +247,8 @@ class DRAGNetwork:
             relevant_knowledge="",
             relevant_score=0.0,
             num_hops=max_ttl,
-            num_messages=num_messages
+            num_messages=num_messages,
+            is_query_hit=False
         )
 
     def flooding_query(
@@ -292,7 +296,7 @@ class DRAGNetwork:
             logger.debug(f"Flooding at Hop {hop}, peer: {current_peer_id}")
             
             # Query current peer and track message
-            current_answer, relevant_knowledge, relevant_score = \
+            current_answer, relevant_knowledge, relevant_score, is_query_hit = \
                 self.peers[current_peer_id].query(question, query_confidence_threshold)
             num_messages += 1
             
@@ -305,7 +309,8 @@ class DRAGNetwork:
                     relevant_knowledge=relevant_knowledge,
                     relevant_score=relevant_score,
                     num_hops=hop,
-                    num_messages=num_messages
+                    num_messages=num_messages,
+                    is_query_hit=is_query_hit
                 )
             
             # Add all unvisited neighbors to queue
@@ -326,7 +331,8 @@ class DRAGNetwork:
             relevant_knowledge="",
             relevant_score=0.0,
             num_hops=max_ttl,
-            num_messages=num_messages
+            num_messages=num_messages,
+            is_query_hit=False
         )
 
 
@@ -361,7 +367,7 @@ class CRAGNetwork:
             RAGAnswer object containing the response
         """
         # Query current peer
-        current_answer, relevant_knowledge, relevant_score = \
+        current_answer, relevant_knowledge, relevant_score, is_query_hit = \
             self.peer.query(question, query_confidence_threshold)
 
         # Return if answer found
@@ -372,7 +378,8 @@ class CRAGNetwork:
                 relevant_knowledge=relevant_knowledge,
                 relevant_score=relevant_score,
                 num_hops=0,
-                num_messages=0
+                num_messages=0,
+                is_query_hit=is_query_hit
             )
             
         logger.debug(f"Search failed")
@@ -383,5 +390,6 @@ class CRAGNetwork:
             relevant_knowledge="",
             relevant_score=0.0,
             num_hops=0,
-            num_messages=0
+            num_messages=0,
+            is_query_hit=False
         )

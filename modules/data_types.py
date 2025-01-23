@@ -13,6 +13,7 @@ class RAGAnswer(BaseModel):
     relevant_score: float
     num_hops: int
     num_messages: int
+    is_query_hit: bool
 
 
 class Testcase(BaseModel):
@@ -23,3 +24,4 @@ class Testcase(BaseModel):
     relevant_score: float
     num_hops: int
     num_messages: int
+    is_query_hit: bool

@@ -161,7 +161,7 @@ class QAEvaluator:
             'semantic_similarity': [], 'length_ratio': [], 'length_difference': [],
             'edit_distance': [], 'normalized_edit_distance': [],
             'bigram_overlap': [], 'trigram_overlap': [], 'avg_num_hops': [],
-            'avg_num_messages': [],
+            'avg_num_messages': [], 'avg_query_hit': []
         }
 
         # Calculate metrics for each prediction-reference pair
@@ -207,6 +207,9 @@ class QAEvaluator:
 
             # Average number of messages
             metrics['avg_num_messages'].append(test_case.num_messages)
+
+            # Average query hit rate
+            metrics['avg_query_hit'].append(test_case.is_query_hit * 1)
 
         # Calculate means and convert to percentages where appropriate
         results = {}

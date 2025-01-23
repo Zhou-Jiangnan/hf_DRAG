@@ -9,7 +9,7 @@ from loguru import logger
 import numpy as np
 from tqdm import tqdm
 
-from modules.csv_logger import CSVLogger
+from modules.exp_logger import ExpLogger
 from modules.data_types import Datapoint, Testcase
 from modules.rag_network import DRAGNetwork, CRAGNetwork
 from modules.evaluator import QAEvaluator
@@ -27,9 +27,14 @@ def get_dict_val(dict_item, dot_keys):
 
 def run_simulation(cfg: Namespace):
     # Init csv logger
-    csv_logger = CSVLogger()
-    metrics_logger = csv_logger.logger("metrics")
-    testcases_logger = csv_logger.logger("testcases")
+    exp_logger = ExpLogger()
+    config_logger = exp_logger.get_yaml_logger("config")
+    metrics_logger = exp_logger.get_csv_logger("metrics")
+    test_cases_logger = exp_logger.get_csv_logger("test_cases")
+
+    # Save all config
+    config_logger.log(cfg.as_dict())
+    config_logger.save()
 
     # Load Huggingface dataset
     dataset = load_dataset(**cfg.data.load.as_dict())
@@ -111,20 +116,21 @@ def run_simulation(cfg: Namespace):
             relevant_knowledge=rag_answer.relevant_knowledge,
             relevant_score=rag_answer.relevant_score,
             num_hops=rag_answer.num_hops,
-            num_messages=rag_answer.num_messages
+            num_messages=rag_answer.num_messages,
+            is_query_hit=rag_answer.is_query_hit
         )
-        testcases_logger.log(test_case.model_dump())
+        test_cases_logger.log(test_case.model_dump())
         test_cases.append(test_case)
 
         # log evaluation results regularly
         if idx % cfg.rag.log_every_n_steps == 0:
-            testcases_logger.save()
+            test_cases_logger.save()
             eval_results = qa_evaluator.evaluate(test_cases)
             metrics_logger.log(eval_results)
             metrics_logger.save()
 
     # log final results
-    testcases_logger.save()
+    test_cases_logger.save()
     eval_results = qa_evaluator.evaluate(test_cases)
     metrics_logger.log(eval_results)
     metrics_logger.save()
