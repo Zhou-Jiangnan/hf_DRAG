@@ -10,3 +10,5 @@ rag:
   query_confidence_threshold: 0.8  # The confidence threshold required for an answer to be accepted
   num_query_neighbor: 2  # topic-based search: The maximum number of neighbors to query at each hop
   query_ttl: 6  # The time-to-live for the query (maximum number of hops).
+  filter_out_topic_ratio: 0.0  # The ratio of topics to be filtered out for retrieval
+  filter_out_qa_ratio: 0.0  # The ratio of question-answer to be filtered out for retrieval

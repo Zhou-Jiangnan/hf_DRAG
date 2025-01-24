@@ -34,6 +34,8 @@ def parse_args():
     parser.add_argument("--rag.query_confidence_threshold", type=float)
     parser.add_argument("--rag.num_query_neighbor", type=int)
     parser.add_argument("--rag.query_ttl", type=int)
+    parser.add_argument("--rag.filter_out_topic_ratio", type=float)
+    parser.add_argument("--rag.filter_out_qa_ratio", type=float)
 
     parser.add_argument("--config", action="config")
 

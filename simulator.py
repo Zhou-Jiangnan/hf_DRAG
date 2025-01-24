@@ -16,13 +16,22 @@ from modules.evaluator import QAEvaluator
 from modules.options import parse_args
 
 
-def get_dict_val(dict_item, dot_keys):
-    """Get nested value from the dict"""
-    keys = dot_keys.split(".")
-    val = dict_item
+def get_nested_value(data_dict: dict, dot_key_path: str):
+    """
+    Retrieves a nested value from a dictionary using a dot-separated key path.
+
+    Args:
+        data_dict: The dictionary to retrieve the value from.
+        dot_key_path: A string representing the nested keys separated by dots (e.g., "key1.key2.key3").
+
+    Returns:
+        The value at the specified path in the dictionary.
+    """
+    keys = dot_key_path.split(".")
+    value = data_dict
     for key in keys:
-        val = val[key]
-    return val
+        value = value[key]
+    return value
 
 
 def run_simulation(cfg: Namespace):
@@ -40,26 +49,41 @@ def run_simulation(cfg: Namespace):
     # Load Huggingface dataset
     dataset = load_dataset(**cfg.data.load.as_dict())
     data_points: List[Datapoint] = []
+    all_topics = set()
 
     # task type:
     # - mcqa for Multiple Choice Question Answering
     # - ogqa for Open Generative Question Answering
     task_type = cfg.data.task_type
 
-    # Only pick 20 samples from dataset for test mode
+    # Only pick 20 samples from dataset in test mode
     if cfg.rag.test_mode == True:
         dataset = dataset.take(20)
 
+    # Prepare data points
     for item in dataset:
-        topic = get_dict_val(item, cfg.data.topic_path)
-        question = get_dict_val(item, cfg.data.question_path)
-        answer = get_dict_val(item, cfg.data.answer_path)
+        topic = get_nested_value(item, cfg.data.topic_path)
+        question = get_nested_value(item, cfg.data.question_path)
+        answer = get_nested_value(item, cfg.data.answer_path)
         if task_type == "mcqa":
-            choices = get_dict_val(item, cfg.data.choices_path)
+            choices = get_nested_value(item, cfg.data.choices_path)
             connection_term = " Select the best answer from the following candidates, replying with 1, 2, 3, or 4: "
             question = str(question) + connection_term + str(choices)
+
         data_point = Datapoint(topic=str(topic), question=str(question), answer=str(answer))
+        all_topics.add(str(topic))
         data_points.append(data_point)
+    
+    # Filter out a portion of data points in CRAG for comparison
+    filtered_topics = random.choices(
+        list(all_topics), 
+        k=int(len(all_topics) * (1.0 - cfg.rag.filter_out_topic_ratio))
+    )
+    filtered_data_points = [data_point for data_point in data_points if data_point.topic in filtered_topics]
+    filtered_data_points = random.choices(
+        filtered_data_points, 
+        k=int(len(filtered_data_points) * (1.0 - cfg.rag.filter_out_qa_ratio))
+    )
 
     # Initialize DRAG parameters
     query_confidence_threshold = cfg.rag.query_confidence_threshold
@@ -72,7 +96,7 @@ def run_simulation(cfg: Namespace):
                               cfg.rag.random_seed)
     elif cfg.rag.network_type == "CRAG":
         rag_net = CRAGNetwork(cfg.llm.base_url, cfg.llm.name, cfg.rag.random_seed)
-    rag_net.init_knowledge(data_points)
+    rag_net.init_knowledge(filtered_data_points)
 
     # Run evaluation
     qa_evaluator = QAEvaluator()
