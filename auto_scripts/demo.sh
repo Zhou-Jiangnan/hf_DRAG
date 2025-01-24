@@ -42,7 +42,7 @@ run_experiment() {
   echo ""
 
   echo "Below are the logs from the process..."
-  # eval "$command" # Use 'eval' to execute the built command
+  eval "$command" # Use 'eval' to execute the built command
   sleep 1 # This is important.
 
 }
