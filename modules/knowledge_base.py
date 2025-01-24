@@ -13,16 +13,16 @@ class KnowledgeBase:
         arXiv preprint arXiv:1908.10084 (2019).
     """
 
-    def __init__(self, embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"):
+    def __init__(self, text_embedding_model: SentenceTransformer):
         """
         Initializes the KnowledgeBase.
 
         Args:
-            embedding_model: The name of the Sentence Transformer model to use for generating embeddings.
+            text_embedding_model: The Sentence Transformer model to use for generating embeddings.
         """
         self.data_points: List[Datapoint] = []
-        self.embedding_model = SentenceTransformer(embedding_model)
-        self.device = self.embedding_model.device
+        self.text_embedding_model = text_embedding_model
+        self.device = text_embedding_model.device
         self.embeddings = None  # Cache for storing embeddings
 
     def add(self, data_point: Datapoint):
@@ -38,7 +38,7 @@ class KnowledgeBase:
         formatted_entry = f"{data_point.question}"
 
         # Generate embedding for the new data point.
-        new_embedding = self.embedding_model.encode(
+        new_embedding = self.text_embedding_model.encode(
             [formatted_entry],
             convert_to_tensor=True,
             device=self.device
@@ -68,7 +68,7 @@ class KnowledgeBase:
             return []
 
         # Generate embedding for the query.
-        query_embedding = self.embedding_model.encode(
+        query_embedding = self.text_embedding_model.encode(
             [query],
             convert_to_tensor=True,
             device=self.device

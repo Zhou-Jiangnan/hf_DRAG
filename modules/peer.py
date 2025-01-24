@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple
 
 from jinja2 import Environment, FileSystemLoader
+from sentence_transformers import SentenceTransformer
 
 from modules.data_types import Datapoint
 from modules.knowledge_base import KnowledgeBase
@@ -8,7 +9,14 @@ from modules.llm import LLM
 
 
 class Peer:
-    def __init__(self, peer_id: int, llm_url: str, llm_name: str, llm_seed: int):
+    def __init__(
+            self, 
+            peer_id: int, 
+            llm_url: str, 
+            llm_name: str, 
+            llm_seed: int, 
+            text_embedding_model: SentenceTransformer
+        ):
         """
         Initializes a Peer object.
 
@@ -17,10 +25,11 @@ class Peer:
             llm_url: The URL of the Large Language Model (LLM) service.
             llm_name: The name/model identifier of the LLM.
             llm_seed: The seed value for the LLM to ensure reproducibility.
+            text_embedding_model: The Sentence Transformer model to use for generating embeddings.
         """
         self.peer_id = peer_id
         self.llm = LLM(llm_url, llm_name, llm_seed)
-        self.knowledge_base = KnowledgeBase()
+        self.knowledge_base = KnowledgeBase(text_embedding_model)
     
     def add_knowledge(self, data_point: Datapoint):
         """
