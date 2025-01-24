@@ -83,9 +83,17 @@ class KnowledgeBase:
         top_k = min(top_k, len(self.data_points))  # Ensure top_k doesn't exceed list length
         top_scores, top_indices = similarities.topk(top_k)
 
+        # Ensure top_scores and top_indices are lists even when top_k=1
+        if top_k == 1:
+            top_scores = [top_scores.item()]
+            top_indices = [top_indices.item()]
+        else:
+            top_scores = top_scores.tolist()
+            top_indices = top_indices.tolist()
+
         # Create a list of (sentence, score) tuples
         top_results = []
-        for idx, score in zip(top_indices.tolist(), top_scores.tolist()):
+        for idx, score in zip(top_indices, top_scores):
             relevant_data_point = self.data_points[idx]
             relevance_score = float(score)
             top_results.append((relevant_data_point, relevance_score))

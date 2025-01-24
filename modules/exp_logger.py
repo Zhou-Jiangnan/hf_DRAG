@@ -1,10 +1,9 @@
 import csv
 import os
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Set
 
 import yaml
 from loguru import logger
-from torch import Tensor
 
 class ExpLogger:
     """
@@ -50,18 +49,17 @@ class ExpLogger:
     def __init__(
         self,
         root_dir: str = "./",
-        log_dir_name: str = "logs",
-        version: Optional[Union[int, str]] = None,
+        log_dir_name: str = "logs"
     ):
         super().__init__()
         self._root_dir = os.path.abspath(root_dir)
         self._log_dir_name = log_dir_name
-        self._version = version
+        self._version = None
         self._csv_loggers: Dict[str, _CSVWriter] = {}
         self._yaml_loggers: Dict[str, _YAMLWriter] = {}  # Dictionary to store multiple YAML loggers
 
     @property
-    def version(self) -> Union[int, str]:
+    def version(self) -> int:
         """Gets the experiment version."""
         if self._version is None:
             self._version = self._get_next_version()
@@ -70,7 +68,7 @@ class ExpLogger:
     @property
     def experiment_dir(self) -> str:
         """The directory path for this experiment's logs."""
-        version_name = self.version if isinstance(self.version, str) else f"version_{self.version}"
+        version_name = f"version_{self.version}"
         return os.path.join(self._root_dir, self._log_dir_name, version_name)
 
     def get_csv_logger(self, logger_name: str) -> "_CSVWriter":
@@ -140,23 +138,14 @@ class _CSVWriter:
         self.log_file_name = f"{logger_name}.csv"
         self.log_file_path = os.path.join(self.log_dir, self.log_file_name)
 
-        self._prepare_log_directory()
-
-    def log(self, data_dict: Dict[str, Union[Tensor, float]]) -> None:
+    def log(self, data_dict: Dict[str, Any]) -> None:
         """Appends data to the buffer for CSV logging."""
-
-        def _handle_value(value: Union[Tensor, Any]) -> Any:
-            if isinstance(value, Tensor):
-                return value.item()
-            return value
-
-        processed_data = {k: _handle_value(v) for k, v in data_dict.items()}
-        self.data_buffer.append(processed_data)
+        self.data_buffer.append(data_dict)
 
     def save(self) -> None:
         """Writes the buffered data to the CSV file."""
         if not self.data_buffer:
-            logger.info(f"No data to save for {self.log_file_name}.")
+            logger.warning(f"No data to save for {self.log_file_name}.")
             return
 
         new_fieldnames = self._update_fieldnames()
@@ -192,17 +181,6 @@ class _CSVWriter:
             writer.writeheader()
             writer.writerows(original_data)
 
-    def _prepare_log_directory(self) -> None:
-        """Ensures that the log directory exists and handles existing files."""
-        if os.path.exists(self.log_dir) and os.listdir(self.log_dir):
-            logger.warning(
-                f"Experiment log directory {self.log_dir} already exists and is not empty. "
-                "Previous log files in this directory may be deleted or overwritten when new ones are saved!"
-            )
-            if os.path.isfile(self.log_file_path):
-                logger.warning(f"Deleting existing CSV file: {self.log_file_path}")
-                os.remove(self.log_file_path)
-        os.makedirs(self.log_dir, exist_ok=True)
 
 class _YAMLWriter:
     """YAML writer for ExpLogger."""
@@ -232,7 +210,7 @@ class _YAMLWriter:
     def save(self) -> None:
         """Writes the accumulated data to the YAML file."""
         if not self.data_buffer:
-            logger.info(f"No data to save for {self.log_file_name}.")
+            logger.warning(f"No data to save for {self.log_file_name}.")
             return
 
         with open(self.log_file_path, "w") as yamlfile:

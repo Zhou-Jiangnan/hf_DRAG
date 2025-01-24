@@ -1,10 +1,10 @@
-
-Context:
+# Context
 Question: {{ ref_question }}
 Correct Answer: {{ ref_answer }}
 
-User Question: {{ question }}
+# User Question
+{{ question }}
 
-Answer the user question by relying **only** on the provided context. 
 The context contains a question and its correct answer.
-Respond concisely in JSON format with the key `answer`.
+Respond with the exact provided correct answer, ensuring it is not modified in any way.
+Respond in JSON format with a key `answer`.

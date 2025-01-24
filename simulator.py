@@ -28,6 +28,7 @@ def get_dict_val(dict_item, dot_keys):
 def run_simulation(cfg: Namespace):
     # Init csv logger
     exp_logger = ExpLogger()
+    logger.info(f"Experiment Log Directory: {exp_logger.experiment_dir}")
     config_logger = exp_logger.get_yaml_logger("config")
     metrics_logger = exp_logger.get_csv_logger("metrics")
     test_cases_logger = exp_logger.get_csv_logger("test_cases")
