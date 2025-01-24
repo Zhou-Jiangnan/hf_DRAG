@@ -74,16 +74,19 @@ def run_simulation(cfg: Namespace):
         all_topics.add(str(topic))
         data_points.append(data_point)
     
-    # Filter out a portion of data points in CRAG for comparison
-    filtered_topics = random.choices(
-        list(all_topics), 
-        k=int(len(all_topics) * (1.0 - cfg.rag.filter_out_topic_ratio))
-    )
-    filtered_data_points = [data_point for data_point in data_points if data_point.topic in filtered_topics]
-    filtered_data_points = random.choices(
-        filtered_data_points, 
-        k=int(len(filtered_data_points) * (1.0 - cfg.rag.filter_out_qa_ratio))
-    )
+    if cfg.rag.network_type == "DRAG":
+        filtered_data_points = data_points
+    elif cfg.rag.network_type == "CRAG":
+        # Filter out a portion of data points in CRAG for comparison
+        num_topics_to_keep = int(len(all_topics) * (1.0 - cfg.rag.filter_out_topic_ratio))
+        filtered_topics = random.sample(list(all_topics), k=num_topics_to_keep)
+        filtered_data_points = [
+            dp for dp in data_points if dp.topic in filtered_topics
+        ]
+        num_datapoints_to_keep = int(len(filtered_data_points) * (1.0 - cfg.rag.filter_out_qa_ratio))
+        filtered_data_points = random.sample(filtered_data_points, k=num_datapoints_to_keep)
+    else:
+        raise ValueError(f"Unknown network type: {cfg.rag.network_type}")
 
     # Initialize DRAG parameters
     query_confidence_threshold = cfg.rag.query_confidence_threshold
@@ -96,6 +99,8 @@ def run_simulation(cfg: Namespace):
                               cfg.rag.random_seed)
     elif cfg.rag.network_type == "CRAG":
         rag_net = CRAGNetwork(cfg.llm.base_url, cfg.llm.name, cfg.rag.random_seed)
+    else:
+        raise ValueError(f"Unknown network type: {cfg.rag.network_type}")
     rag_net.init_knowledge(filtered_data_points)
 
     # Run evaluation
