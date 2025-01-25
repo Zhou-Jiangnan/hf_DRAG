@@ -348,8 +348,15 @@ class DRAGNetwork:
 
 
 class CRAGNetwork:
-    def __init__(self, llm_url: str, llm_name: str, llm_seed: int):
-        self.peer = Peer(0, llm_url, llm_name, llm_seed)
+    def __init__(
+            self, 
+            llm_url: str, 
+            llm_name: str, 
+            llm_seed: int, 
+            embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+        ):
+        self.text_embedding_model = SentenceTransformer(embedding_model)
+        self.peer = Peer(0, llm_url, llm_name, llm_seed, self.text_embedding_model)
 
     def init_knowledge(self, data_points: List[Datapoint]):
         """

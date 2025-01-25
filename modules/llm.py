@@ -38,6 +38,9 @@ class LLM:
         response_text = response["response"]
 
         # Parse the JSON string into a dictionary.
-        response_json = json.loads(response_text)
+        try:
+            response_json = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            response_json = {}
 
         return response_json
