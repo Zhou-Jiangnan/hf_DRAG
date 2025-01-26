@@ -13,6 +13,7 @@ def parse_args():
 
     parser.add_argument("--llm.base_url", type=str)
     parser.add_argument("--llm.name", type=str)
+    parser.add_argument("--llm.num_ctx", type=int)
 
     parser.add_argument("--data.load.path", type=str)
     parser.add_argument("--data.load.name", type=str)
