@@ -3,7 +3,7 @@ from ollama import Client
 
 
 class LLM:
-    def __init__(self, llm_url: str, llm_name: str, llm_seed: int = 0):
+    def __init__(self, llm_url: str, llm_name: str, llm_num_ctx: int, llm_seed: int = 0):
         """
         Initializes an LLM object to interact with an Ollama language model.
 
@@ -14,6 +14,7 @@ class LLM:
         """
         self.llm_name = llm_name
         self.llm_client = Client(host=llm_url)
+        self.llm_num_ctx = llm_num_ctx
         self.llm_seed = llm_seed
     
     def generate(self, prompt: str) -> dict:
@@ -31,7 +32,10 @@ class LLM:
             model=self.llm_name,
             prompt=prompt,
             format="json",  # Ensure the model returns a JSON formatted response.
-            options={"seed": self.llm_seed}
+            options={
+                "seed": self.llm_seed,
+                "num_ctx": self.llm_num_ctx
+            }
         )
 
         # Extract the response text (which should be a JSON string).

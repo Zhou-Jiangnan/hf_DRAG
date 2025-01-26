@@ -96,9 +96,9 @@ def run_simulation(cfg: Namespace):
     # Initialize RAG network with peers and knowledges
     if cfg.rag.network_type == "DRAG":
         rag_net = DRAGNetwork(cfg.rag.num_peers, cfg.rag.num_peer_attachments, cfg.llm.base_url, cfg.llm.name, 
-                              cfg.rag.random_seed)
+                              cfg.llm.num_ctx, cfg.rag.random_seed)
     elif cfg.rag.network_type == "CRAG":
-        rag_net = CRAGNetwork(cfg.llm.base_url, cfg.llm.name, cfg.rag.random_seed)
+        rag_net = CRAGNetwork(cfg.llm.base_url, cfg.llm.name, cfg.llm.num_ctx, cfg.rag.random_seed)
     else:
         raise ValueError(f"Unknown network type: {cfg.rag.network_type}")
     rag_net.init_knowledge(filtered_data_points)

@@ -18,13 +18,14 @@ class DRAGNetwork:
             num_peer_attachments: int, 
             llm_url: str, 
             llm_name: str, 
+            llm_num_ctx: int,
             llm_seed: int, 
             embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
         ):
         self.num_peers = num_peers
         self.network = nx.barabasi_albert_graph(num_peers, num_peer_attachments)
         self.text_embedding_model = SentenceTransformer(embedding_model)
-        self.peers = [Peer(peer_id, llm_url, llm_name, llm_seed, self.text_embedding_model) 
+        self.peers = [Peer(peer_id, llm_url, llm_name, llm_num_ctx, llm_seed, self.text_embedding_model) 
                       for peer_id in range(num_peers)]
 
         self.peer_topics: Dict[int, List[str]] = {peer_id: [] for peer_id in range(self.num_peers)}
@@ -352,11 +353,12 @@ class CRAGNetwork:
             self, 
             llm_url: str, 
             llm_name: str, 
+            llm_num_ctx: int,
             llm_seed: int, 
             embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
         ):
         self.text_embedding_model = SentenceTransformer(embedding_model)
-        self.peer = Peer(0, llm_url, llm_name, llm_seed, self.text_embedding_model)
+        self.peer = Peer(0, llm_url, llm_name, llm_num_ctx, llm_seed, self.text_embedding_model)
 
     def init_knowledge(self, data_points: List[Datapoint]):
         """

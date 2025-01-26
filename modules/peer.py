@@ -14,6 +14,7 @@ class Peer:
             peer_id: int, 
             llm_url: str, 
             llm_name: str, 
+            llm_num_ctx: int,
             llm_seed: int, 
             text_embedding_model: SentenceTransformer
         ):
@@ -28,7 +29,7 @@ class Peer:
             text_embedding_model: The Sentence Transformer model to use for generating embeddings.
         """
         self.peer_id = peer_id
-        self.llm = LLM(llm_url, llm_name, llm_seed)
+        self.llm = LLM(llm_url, llm_name, llm_num_ctx, llm_seed)
         self.knowledge_base = KnowledgeBase(text_embedding_model)
     
     def add_knowledge(self, data_point: Datapoint):
