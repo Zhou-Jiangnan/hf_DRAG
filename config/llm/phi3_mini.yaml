@@ -1,0 +1,4 @@
+llm:
+  base_url: http://localhost:11434
+  name: phi3:mini
+  num_ctx: 4096
