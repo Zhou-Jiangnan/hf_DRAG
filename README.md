@@ -4,7 +4,7 @@
 
 - Ubuntu 22.04
 - Python 3.10
-- Ollama 0.4.0
+- Ollama 0.5.7
 
 Install Python requirements:
 

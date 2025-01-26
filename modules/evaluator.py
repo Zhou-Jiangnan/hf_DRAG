@@ -102,9 +102,14 @@ class QAEvaluator:
 
     def calculate_semantic_similarity(self, prediction: str, reference: str) -> float:
         """Calculate semantic similarity using sentence embeddings."""
+        if not prediction or not reference:
+            return 0.0  # Or handle it differently, e.g., log a warning
         # Encode sentences
-        pred_embedding = self.semantic_model.encode([prediction])[0]
-        ref_embedding = self.semantic_model.encode([reference])[0]
+        try:
+            pred_embedding = self.semantic_model.encode(prediction)
+            ref_embedding = self.semantic_model.encode(reference)
+        except TypeError as e:
+            return 0.0
 
         # Calculate cosine similarity
         similarity = np.dot(pred_embedding, ref_embedding) / (
