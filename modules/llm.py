@@ -34,7 +34,8 @@ class LLM:
             format="json",  # Ensure the model returns a JSON formatted response.
             options={
                 "seed": self.llm_seed,
-                "num_ctx": self.llm_num_ctx
+                "num_ctx": self.llm_num_ctx,
+                "num_predict": self.llm_num_ctx
             }
         )
 
