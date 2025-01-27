@@ -9,19 +9,47 @@
 Install Python requirements:
 
 ```bash
-$ python install -r requirements.txt 
+$ pip install -r requirements.txt 
 ```
 
-Start [Ollama](https://github.com/ollama/ollama/blob/main/docs/faq.md) local LLM service:
+Install and start [Ollama](https://ollama.com/download/linux) local LLM service:
 
 ```bash
 # start ollama service:
 $ sudo systemctl start ollama
 # start serving model "Llama 3.2 - 3B"
 # for other Ollama models: https://ollama.com/library
-$ ollama run llama3.2
+$ ollama run llama3.2:3b
 # preload a model into Ollama to get faster response times:
-$ curl http://localhost:11434/api/generate -d '{"model": "llama3.2"}'
+$ curl http://localhost:11434/api/generate -d '{"model": "llama3.2:3b"}'
+# check ollama log
+$ journalctl -u ollama
+```
+
+If you do not have root permission, install and start Ollama [manually](https://github.com/ollama/ollama/blob/main/docs/linux.md):
+
+```bash
+# Download and extract the package:
+$ curl -L https://ollama.com/download/ollama-linux-amd64.tgz -o ollama-linux-amd64.tgz
+$ sudo tar -C <your-path>/ -xzf ollama-linux-amd64.tgz
+# Create user-mode systemd.service file `~/.config/systemd/user/ollama.service` with the following content:
+[Unit]
+Description=Ollama Service
+After=network-online.target
+
+[Service]
+ExecStart=<your-path>/bin/ollama serve
+Restart=always
+RestartSec=3
+Environment="PATH=$PATH"
+
+[Install]
+WantedBy=default.target
+# Start systemd ollama service in user mode:
+$ systemctl --user enable ollama
+$ systemctl --user start ollama
+# Check ollama service log:
+$ journalctl --user -f -u ollama
 ```
 
 Install [NLTK Data](https://www.nltk.org/data.html)
@@ -32,30 +60,27 @@ $ python -m nltk.downloader all
 
 ## Models
 
-- Llama 3.2: (1B, 3B, 11B)
-- Gemma 2: (2B, 9B)
-- GPT (GPT-4o, GPT-4o mini, GPT-3.5)
-- Claude 3.5 (Haiku, Sonnet)
+The following Ollama models are utilized in our experiments.
+
+- [Llama 3.2 3B](https://ollama.com/library/llama3.2:3b)
+- [Gemma 2 2B](https://ollama.com/library/gemma2:2b)
+- [Phi-3 3B](https://ollama.com/library/phi3:3.8b)
+- [Qwen2.5 3B](https://ollama.com/library/qwen2.5:3b)
 
 ## Datasets
 
-Use `HF_HUB_CACHE` to configure where repositories from the Hub will be cached locally (models, datasets and spaces).
+The following Hugging Face datasets are utilized in our experiments.
 
-### Dataset Settings
+- [MMLU](https://huggingface.co/datasets/cais/mmlu)
+- [medical_extended](https://huggingface.co/datasets/sarus-tech/medical_extended)
+- [news-category-dataset](https://huggingface.co/datasets/heegyu/news-category-dataset)
 
-| Dataset          | Repository                        | Split                     | Remarks |
-|------------------|-----------------------------------|---------------------------|---------|
-| TriviaqQA        | mandarjoshi/trivia_qa             | rc.nocontext - validation |         |
-| NaturalQuestions | lighteval/natural_questions_clean | validation                |         |
-|                  |                                   |                           |         |
-|                  |                                   |                           |         |
-|                  |                                   |                           |         |
-|                  |                                   |                           |         |
+> Use `HF_HUB_CACHE` to configure where repositories from the Hub will be cached locally (models, datasets and spaces).
 
-## Startup
+## Run
 
 ```bash
-$ python drag.py --config="./config/default.yaml"
+$ python simulator.py
 ```
 
 ## DEBUG
