@@ -41,7 +41,7 @@ After=network-online.target
 ExecStart=<your-path>/bin/ollama serve
 Restart=always
 RestartSec=3
-Environment="PATH=$PATH"
+Environment="PATH=$PATH" "OLLAMA_NUM_PARALLEL=1"
 
 [Install]
 WantedBy=default.target
@@ -85,4 +85,11 @@ $ python simulator.py
 
 ## DEBUG
 
+### Ollama hangs after 20-30 mins
+
+It seems that multiple Ollama invocations are causing a deadlock or some form of resource contention, leading to the processes being locked in a high GPU utilization state. This issue requires restarting the Ollama service to restore normal operation.
+
+Solution: Set `OLLAMA_NUM_PARALLEL=1`
+
+Reference: [Issue 6380](https://github.com/ollama/ollama/issues/6380)
 
