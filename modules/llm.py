@@ -2,6 +2,11 @@ import json
 from ollama import Client
 
 
+def filter_string_encode(text):
+    # Encode to UTF-8, ignoring errors
+    return text.encode("utf-8", "ignore").decode("utf-8")
+
+
 class LLM:
     def __init__(self, llm_url: str, llm_name: str, llm_num_ctx: int, llm_seed: int = 0):
         """
@@ -41,6 +46,9 @@ class LLM:
 
         # Extract the response text (which should be a JSON string).
         response_text = response["response"]
+
+        # Handles the characters that cannot be encoded by ignoring them
+        response_text = filter_string_encode(response_text)
 
         # Parse the JSON string into a dictionary.
         try:
