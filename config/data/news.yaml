@@ -8,3 +8,4 @@ data:
   topic_path: category
   question_path: headline
   answer_path: authors
+  num_samples: 10000

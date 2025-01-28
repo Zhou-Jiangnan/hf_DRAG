@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument("--data.question_path", type=str)
     parser.add_argument("--data.choices_path", type=str)
     parser.add_argument("--data.answer_path", type=str)
+    parser.add_argument("--data.num_samples", type=int)
 
     parser.add_argument("--rag.random_seed", type=int)
     parser.add_argument("--rag.log_every_n_steps", type=int)

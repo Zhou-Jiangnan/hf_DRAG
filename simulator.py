@@ -56,9 +56,15 @@ def run_simulation(cfg: Namespace):
     # - ogqa for Open Generative Question Answering
     task_type = cfg.data.task_type
 
-    # Only pick 20 samples from dataset in test mode
-    if cfg.rag.test_mode == True:
-        dataset = dataset.take(20)
+    if cfg.rag.test_mode:
+        # Only pick 20 samples from dataset in test mode
+        dataset = dataset.select(range(20))
+    else:
+        if cfg.data.num_samples is not None:
+            # Sample data if num_samples is specified
+            dataset = dataset.shuffle(seed=cfg.rag.random_seed).take(min(cfg.data.num_samples, len(dataset)))
+        else:
+            dataset = dataset.shuffle(seed=cfg.rag.random_seed)
 
     # Prepare data points
     for item in dataset:
