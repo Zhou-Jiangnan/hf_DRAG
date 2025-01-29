@@ -30,9 +30,6 @@ class QAEvaluator:
             'bigram_overlap': [], 'trigram_overlap': [], 'avg_num_hops': [],
             'avg_num_messages': [], 'avg_query_hit': []
         }
-        self.percentage_metrics = ['exact_match', 'precision', 'recall', 'f1', 'bleu', 
-        'rouge1', 'rouge2', 'rougeL', 'semantic_similarity', 'normalized_edit_distance',
-        'bigram_overlap', 'trigram_overlap']
 
     def normalize_text(self, text: str) -> str:
         """Normalize text by removing articles, punctuation, and extra whitespace."""
@@ -212,8 +209,5 @@ class QAEvaluator:
         # Calculate means and convert to percentages where appropriate
         results = {}
         for metric, values in self.metrics.items():
-            if metric in self.percentage_metrics:
-                results[metric] = np.mean(values) * 100
-            else:
-                results[metric] = np.mean(values)
+            results[metric] = np.mean(values)
         return results
