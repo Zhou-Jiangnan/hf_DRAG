@@ -1,4 +1,0 @@
-llm:
-  base_url: http://localhost:11434
-  name: deepseek-r1:7b
-  num_ctx: 4096
