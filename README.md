@@ -64,8 +64,7 @@ The following Ollama models are utilized in our experiments.
 
 - [Llama 3.2 3B](https://ollama.com/library/llama3.2:3b)
 - [Gemma 2 2B](https://ollama.com/library/gemma2:2b)
-- [Phi-3 3B](https://ollama.com/library/phi3:3.8b)
-- [DeepSeek-R1 7B](https://ollama.com/library/deepseek-r1:7b)
+- [Qwen 2.5 3B](https://ollama.com/library/qwen2.5:3b)
 
 ## Datasets
 
