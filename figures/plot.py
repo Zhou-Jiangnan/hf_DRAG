@@ -50,6 +50,8 @@ class Plotter:
         self._setup_style()
         self._create_figure()
 
+        self.current_ax_idx = 0
+
     def _setup_style(self) -> None:
         """Set up the initial plotting style with enhanced defaults."""
         sns.set_theme(style=self.style, font=self.font, font_scale=self.font_scale)
@@ -77,7 +79,7 @@ class Plotter:
             rect=(0, 0, 1, 1),
         )
 
-    def load_data(self, data_path: str, **kwargs) -> pd.DataFrame:
+    def _load_data(self, data_path: str, **kwargs) -> pd.DataFrame:
         """
         Load and preprocess data with error handling.
 
@@ -104,51 +106,6 @@ class Plotter:
             return df
         except Exception as e:
             raise ValueError(f"Error loading data from {data_path}: {str(e)}")
-
-    def plot(
-        self,
-        data_path: str,
-        plot_type: str,
-        x: str,
-        y: str,
-        ax: plt.Axes,
-        **kwargs
-    ) -> Optional[sns.FacetGrid]:
-        """
-        Generate a plot with enhanced features and error handling.
-
-        Args:
-            data_path: Path to the CSV data file
-            plot_type: Type of plot ("line", "bar", or "catplot")
-            x: Column name for x-axis
-            y: Column name for y-axis
-            ax: Matplotlib axes object to plot on
-            **kwargs: Additional plotting parameters
-                     hue (str): Column name for color encoding
-                     style (str): Column name for style encoding
-                     markers (bool/list): Marker settings
-                     palette (str): Color palette
-                     ylim (tuple): y-axis limits
-                     annotate (str): Column name for annotations
-                     error_bars (str): Column name for error bars
-                     kind (str): Kind of catplot
-        """
-        df = self.load_data(data_path, **kwargs)
-        
-        try:
-            if plot_type == "line":
-                self._create_line_plot(df, x, y, ax, **kwargs)
-            elif plot_type == "bar":
-                self._create_bar_plot(df, x, y, ax, **kwargs)
-            elif plot_type == "catplot":
-                return self._create_cat_plot(df, x, y, **kwargs)
-            else:
-                raise ValueError(f"Invalid plot_type: {plot_type}")
-
-            self._customize_axis(ax, **kwargs)
-            
-        except Exception as e:
-            raise ValueError(f"Error creating {plot_type} plot: {str(e)}")
 
     def _create_line_plot(
         self,
@@ -268,6 +225,80 @@ class Plotter:
             rect=(0, 0, 1, 0.9)
         )
 
+    def _set_subplot_title(
+        self,
+        ax: plt.Axes,
+        title: str,
+        **kwargs
+    ) -> None:
+        """
+        Set subplot title with enhanced formatting options.
+
+        Args:
+            ax: The axes object for the subplot
+            title: The title text
+            **kwargs: Additional formatting parameters
+        """
+        ax.text(
+            0.5,
+            -self.subplot_title_spacing,
+            title,
+            transform=ax.transAxes,
+            ha="center",
+            va="top",
+        )
+
+    def plot(
+        self,
+        data_path: str,
+        plot_type: str,
+        x: str,
+        y: str,
+        subplot_title: str=None,
+        **kwargs
+    ) -> Optional[sns.FacetGrid]:
+        """
+        Generate a plot with enhanced features and error handling.
+
+        Args:
+            data_path: Path to the CSV data file
+            plot_type: Type of plot ("line", "bar", or "catplot")
+            x: Column name for x-axis
+            y: Column name for y-axis
+            subplot_title: Subplot title
+            **kwargs: Additional plotting parameters
+                     hue (str): Column name for color encoding
+                     style (str): Column name for style encoding
+                     markers (bool/list): Marker settings
+                     palette (str): Color palette
+                     ylim (tuple): y-axis limits
+                     annotate (str): Column name for annotations
+                     error_bars (str): Column name for error bars
+                     kind (str): Kind of catplot
+        """
+        df = self._load_data(data_path, **kwargs)
+        ax = self.axes[self.current_ax_idx]
+        
+        try:
+            if plot_type == "line":
+                self._create_line_plot(df, x, y, ax, **kwargs)
+            elif plot_type == "bar":
+                self._create_bar_plot(df, x, y, ax, **kwargs)
+            elif plot_type == "catplot":
+                return self._create_cat_plot(df, x, y, **kwargs)
+            else:
+                raise ValueError(f"Invalid plot_type: {plot_type}")
+
+            self._customize_axis(ax, **kwargs)
+
+            if subplot_title:
+                self._set_subplot_title(ax, subplot_title)
+            
+            self.current_ax_idx += 1
+            
+        except Exception as e:
+            raise ValueError(f"Error creating {plot_type} plot: {str(e)}")
+
     def add_legend(self, **kwargs) -> None:
         """
         Add a unified legend with improved positioning.
@@ -277,7 +308,7 @@ class Plotter:
                      legend_cols (int): Number of columns in the legend
         """
         self.legend_cols = kwargs.get("legend_cols", self.legend_cols)
-        handles, labels = self.axes[-1].get_legend_handles_labels()
+        handles, labels = self.axes[0].get_legend_handles_labels()
 
         if self.legend is None:
             self.legend = (handles, labels)
@@ -338,26 +369,3 @@ class Plotter:
             print(f"Plot saved to {save_path}")
         else:
             plt.show()
-
-    def set_subplot_title(
-        self,
-        ax: plt.Axes,
-        title: str,
-        **kwargs
-    ) -> None:
-        """
-        Set subplot title with enhanced formatting options.
-
-        Args:
-            ax: The axes object for the subplot
-            title: The title text
-            **kwargs: Additional formatting parameters
-        """
-        ax.text(
-            0.5,
-            -self.subplot_title_spacing,
-            title,
-            transform=ax.transAxes,
-            ha="center",
-            va="top",
-        )
