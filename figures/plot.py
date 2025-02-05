@@ -14,12 +14,13 @@ class Plotter:
         self,
         style: str = "ticks",
         font: str = "Times New Roman",
-        height: float = 2.5,
-        aspect: float = 16/9,
+        height: float = 4,
+        aspect: float = 3/2,
+        font_scale: float = 1.2,
         num_rows: int = 1,
         num_cols: int = 1,
-        legend_spacing: float = 0.15,
-        subplot_title_spacing: float = 0.15,
+        legend_spacing: float = 0.06,
+        subplot_title_spacing: float = 0.35,
     ):
         """
         Initialize the Plotter with enhanced style settings.
@@ -37,6 +38,7 @@ class Plotter:
         self.font = font
         self.height = height
         self.aspect = aspect
+        self.font_scale = font_scale
         self.num_rows = num_rows
         self.num_cols = num_cols
         self.legend_spacing = legend_spacing
@@ -50,12 +52,7 @@ class Plotter:
 
     def _setup_style(self) -> None:
         """Set up the initial plotting style with enhanced defaults."""
-        sns.set_theme(style=self.style, font=self.font)
-        plt.rcParams['axes.titlesize'] = 11
-        plt.rcParams['axes.labelsize'] = 10
-        plt.rcParams['xtick.labelsize'] = 9
-        plt.rcParams['ytick.labelsize'] = 9
-        plt.rcParams['legend.fontsize'] = 9
+        sns.set_theme(style=self.style, font=self.font, font_scale=self.font_scale)
 
     def _create_figure(self) -> None:
         """Create figure and axes with improved spacing."""
@@ -75,7 +72,10 @@ class Plotter:
             self.axes = np.array(self.axes).flatten()
 
         # Add proper spacing between subplots
-        self.fig.tight_layout(pad=1.2)
+        self.fig.tight_layout(
+            # pad=1.2,
+            rect=(0, 0, 1, 1),
+        )
 
     def load_data(self, data_path: str, **kwargs) -> pd.DataFrame:
         """
@@ -159,7 +159,7 @@ class Plotter:
         **kwargs
     ) -> None:
         """Create a line plot with enhanced features."""
-        plot = sns.lineplot(data=df, x=x, y=y, ax=ax, **kwargs)
+        sns.lineplot(data=df, x=x, y=y, ax=ax, **kwargs)
         
         if kwargs.get("annotate"):
             self._add_annotations(df, x, y, ax, kwargs["annotate"])
@@ -352,17 +352,12 @@ class Plotter:
             ax: The axes object for the subplot
             title: The title text
             **kwargs: Additional formatting parameters
-                     fontsize (int): Title font size
-                     pad (float): Padding between title and plot
         """
-        fontsize = kwargs.get("fontsize", 12)
-
         ax.text(
             0.5,
             -self.subplot_title_spacing,
             title,
             transform=ax.transAxes,
-            fontsize=fontsize,
             ha="center",
             va="top",
         )
