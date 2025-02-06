@@ -255,6 +255,7 @@ class Plotter:
         x: str,
         y: str,
         subplot_title: str=None,
+        show_grid: bool=False,
         **kwargs
     ) -> Optional[sns.FacetGrid]:
         """
@@ -293,6 +294,9 @@ class Plotter:
 
             if subplot_title:
                 self._set_subplot_title(ax, subplot_title)
+
+            if show_grid:
+                ax.grid()
             
             self.current_ax_idx += 1
             
