@@ -113,3 +113,38 @@ class Peer:
 
         # If the confidence threshold is not met, return None for the answer and indicate a query miss.
         return None, relevant_data_point.model_dump_json(), relevance_score, False
+
+    def query_no_rag(
+            self, 
+            question: str,
+    ) -> Tuple[Optional[str], Optional[str], float, bool]:
+        """
+        Queries the peer's knowledge base for an answer to the given question.
+
+        Args:
+            question: The question to answer.
+            query_confidence_threshold: The minimum confidence score for a relevant knowledge to be considered a hit.
+
+        Returns:
+            A tuple containing:
+            - The LLM's generated answer (or None if no answer is found).
+            - The most relevant knowledge found in the knowledge base (or None if nothing relevant is found).
+            - The relevance score of the retrieved knowledge.
+            - A boolean indicating whether the query was a hit (True) or a miss (False) based on the confidence 
+                threshold.
+        """
+
+        # Construct a prompt for the LLM to generate an answer based on the relevant knowledge.
+        template_environment = Environment(loader=FileSystemLoader(searchpath="./templates"))
+        answer_template = template_environment.get_template("generate_answer_no_rag.tmpl")
+        llm_prompt = answer_template.render(
+            question=question
+        )
+
+        # Invoke the LLM to generate an answer.
+        llm_response = self.llm.generate(llm_prompt)
+
+        # Extract the generated answer from the LLM's response.
+        generated_answer = llm_response.get("answer", None)
+
+        return generated_answer, None, 0.0, False

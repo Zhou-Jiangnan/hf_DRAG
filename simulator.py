@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from modules.exp_logger import ExpLogger
 from modules.data_types import Datapoint, Testcase
-from modules.rag_network import DRAGNetwork, CRAGNetwork
+from modules.rag_network import DRAGNetwork, CRAGNetwork, NoRAGNetwork
 from modules.evaluator import QAEvaluator
 from modules.options import parse_args
 
@@ -91,6 +91,8 @@ def run_simulation(cfg: Namespace):
         ]
         num_datapoints_to_keep = int(len(filtered_data_points) * (1.0 - cfg.rag.filter_out_qa_ratio))
         filtered_data_points = random.sample(filtered_data_points, k=num_datapoints_to_keep)
+    elif cfg.rag.network_type == "NoRAG":
+        filtered_data_points = []
     else:
         raise ValueError(f"Unknown network type: {cfg.rag.network_type}")
 
@@ -105,6 +107,8 @@ def run_simulation(cfg: Namespace):
                               cfg.llm.num_ctx, cfg.rag.random_seed)
     elif cfg.rag.network_type == "CRAG":
         rag_net = CRAGNetwork(cfg.llm.base_url, cfg.llm.name, cfg.llm.num_ctx, cfg.rag.random_seed)
+    elif cfg.rag.network_type == "NoRAG":
+        rag_net = NoRAGNetwork(cfg.llm.base_url, cfg.llm.name, cfg.llm.num_ctx, cfg.rag.random_seed)
     else:
         raise ValueError(f"Unknown network type: {cfg.rag.network_type}")
     rag_net.init_knowledge(filtered_data_points)
@@ -139,6 +143,10 @@ def run_simulation(cfg: Namespace):
             rag_answer = rag_net.query(
                 data_point.question,
                 query_confidence_threshold=query_confidence_threshold
+            )
+        elif cfg.rag.network_type == "NoRAG":
+            rag_answer = rag_net.query(
+                data_point.question
             )
         else:
             raise ValueError(f"Unknown network type: {cfg.rag.network_type}")

@@ -413,3 +413,51 @@ class CRAGNetwork:
             num_messages=0,
             is_query_hit=False
         )
+
+
+class NoRAGNetwork:
+    def __init__(
+            self, 
+            llm_url: str, 
+            llm_name: str, 
+            llm_num_ctx: int,
+            llm_seed: int
+        ):
+        self.peer = Peer(0, llm_url, llm_name, llm_num_ctx, llm_seed, self.text_embedding_model)
+
+    def init_knowledge(self, data_points: List[Datapoint]):
+        """
+        No need to initialize knowledge for No RAG mode
+
+        Args:
+            data_points: A list of Datapoint objects.
+        """
+        pass
+
+    def query(
+            self,
+            question: str
+    ) -> RAGAnswer:
+        """
+        Queries the network using a random walk algorithm with restart probability.
+
+        Args:
+            question: The question to ask
+            query_confidence_threshold: Minimum confidence required for an answer
+
+        Returns:
+            RAGAnswer object containing the response
+        """
+        # Query current peer
+        generated_answer, relevant_knowledge, relevant_score, is_query_hit = \
+            self.peer.query_no_rag(question)
+
+        # Return empty answer if no result found
+        return RAGAnswer(
+            answer=str(generated_answer),
+            relevant_knowledge=relevant_knowledge,
+            relevant_score=relevant_score,
+            num_hops=0,
+            num_messages=0,
+            is_query_hit=is_query_hit
+        )
