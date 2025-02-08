@@ -423,7 +423,7 @@ class NoRAGNetwork:
             llm_num_ctx: int,
             llm_seed: int
         ):
-        self.peer = Peer(0, llm_url, llm_name, llm_num_ctx, llm_seed, self.text_embedding_model)
+        self.peer = Peer(0, llm_url, llm_name, llm_num_ctx, llm_seed)
 
     def init_knowledge(self, data_points: List[Datapoint]):
         """

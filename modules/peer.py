@@ -16,7 +16,7 @@ class Peer:
             llm_name: str, 
             llm_num_ctx: int,
             llm_seed: int, 
-            text_embedding_model: SentenceTransformer
+            text_embedding_model: SentenceTransformer = None
         ):
         """
         Initializes a Peer object.
@@ -30,7 +30,8 @@ class Peer:
         """
         self.peer_id = peer_id
         self.llm = LLM(llm_url, llm_name, llm_num_ctx, llm_seed)
-        self.knowledge_base = KnowledgeBase(text_embedding_model)
+        if text_embedding_model:
+            self.knowledge_base = KnowledgeBase(text_embedding_model)
     
     def add_knowledge(self, data_point: Datapoint):
         """
@@ -147,4 +148,4 @@ class Peer:
         # Extract the generated answer from the LLM's response.
         generated_answer = llm_response.get("answer", None)
 
-        return generated_answer, None, 0.0, False
+        return generated_answer, "", 0.0, False
