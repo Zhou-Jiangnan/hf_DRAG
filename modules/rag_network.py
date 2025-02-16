@@ -136,7 +136,12 @@ class DRAGNetwork:
                 for neighbor_id in current_neighbor_ids:
                     if question_topic in self.peer_topics[neighbor_id]:
                         topic_matched_neighbors.append(neighbor_id)
-                logger.debug(f"Found {len(topic_matched_neighbors)} topic-matched neighbors")
+
+                # Add topic-matched peers to the neighbor list of current peer
+                # So that in the future, there is no need to flood other peers
+                logger.debug(f"Found {len(topic_matched_neighbors)} topic-matched neighbors, update neighbor list")
+                for neighbor_id in topic_matched_neighbors:
+                    self.network.add_edge(query_peer_id, neighbor_id)
 
                 # Select neighbors based on topic matching
                 if len(topic_matched_neighbors) > num_query_neighbor:
