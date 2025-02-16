@@ -155,7 +155,7 @@ class _CSVWriter:
             self._rewrite_csv_with_new_header(self.fieldnames)
 
         with open(self.log_file_path, mode=("a" if file_exists else "w"), errors='surrogatepass', newline="") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=self.fieldnames)
+            writer = csv.DictWriter(csvfile, fieldnames=self.fieldnames, escapechar='\\')
             if not file_exists:
                 writer.writeheader()
             writer.writerows(self.data_buffer)
@@ -173,11 +173,11 @@ class _CSVWriter:
     def _rewrite_csv_with_new_header(self, fieldnames: List[str]) -> None:
         """Rewrites the CSV file with a new header."""
         with open(self.log_file_path, "r", errors='surrogatepass', newline="") as csvfile:
-            reader = csv.DictReader(csvfile)
+            reader = csv.DictReader(csvfile, escapechar='\\')
             original_data = list(reader)
 
         with open(self.log_file_path, "w", errors='surrogatepass', newline="") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, escapechar='\\')
             writer.writeheader()
             writer.writerows(original_data)
 
