@@ -102,6 +102,26 @@ def main():
     plotter.save_or_show("./figures/output/f1_anm_peer.pdf")
 
     """
+    ANM vs Number of Queries - Llama on MMLU
+    """
+
+    plotter = Plotter(height=4, aspect=3/2, num_rows=1, num_cols=1, legend_spacing=0.08, subplot_title_spacing=0.36)
+
+    plotter.plot(
+        data_path="./figures/data/anm_nq.csv",
+        plot_type="line",
+        x="Number of Queries",
+        y="Average Number of Messages",
+        hue="# Peers",
+        style="# Peers",
+        markers=True,
+    )
+
+    plotter.add_legend(legend_cols=5)
+    plotter.save_or_show("./figures/output/anm_nq.pdf")
+
+
+    """
     F1 vs Number of Peer Attachment and Number of Peer in Network
     """
 
