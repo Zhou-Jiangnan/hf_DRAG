@@ -66,7 +66,7 @@ def main():
         data_path="./figures/data/anm_peer_llama_mmlu.csv",
         plot_type="line",
         x="# Peers",
-        y="Average Number of Messages",
+        y="# Messages",
         style="Algorithm",
         hue="Algorithm",
         subplot_title="(d) Llama 3.2 3B - MMLU",
@@ -78,7 +78,7 @@ def main():
         data_path="./figures/data/anm_peer_llama_medical.csv",
         plot_type="line",
         x="# Peers",
-        y="Average Number of Messages",
+        y="# Messages",
         style="Algorithm",
         hue="Algorithm",
         subplot_title="(e) Llama 3.2 3B - Medical",
@@ -90,7 +90,7 @@ def main():
         data_path="./figures/data/anm_peer_llama_news.csv",
         plot_type="line",
         x="# Peers",
-        y="Average Number of Messages",
+        y="# Messages",
         style="Algorithm",
         hue="Algorithm",
         subplot_title="(f) Llama 3.2 3B - News",
@@ -110,11 +110,12 @@ def main():
     plotter.plot(
         data_path="./figures/data/anm_nq.csv",
         plot_type="line",
-        x="Number of Queries",
-        y="Average Number of Messages",
+        x="# Queries",
+        y="# Messages",
         hue="# Peers",
         style="# Peers",
         markers=True,
+        show_grid=True,
     )
 
     plotter.add_legend(legend_cols=5)
@@ -122,108 +123,84 @@ def main():
 
 
     """
-    F1 vs Number of Peer Attachment and Number of Peer in Network
+    Sensitivity on Number of Peer Attachment
     """
-
-    plotter = Plotter(height=4, aspect=3/2, num_rows=1, num_cols=1, legend_spacing=0.06, subplot_title_spacing=0.36)
+    plotter = Plotter(height=3.4, aspect=4/3, num_rows=2, num_cols=1, legend_spacing=0.02, subplot_title_spacing=0.28)
 
     plotter.plot(
         data_path="./figures/data/f1_peer_attach_llama_mmlu.csv",
         plot_type="bar",
         x="# Peer",
         y="F1 (%)",
-        hue="# Peer Attach"
+        hue="# Peer Attach",
+        subplot_title="(a)",
     )
-
-    plotter.add_legend(legend_cols=5)
-    plotter.save_or_show("./figures/output/f1_peer_attach.pdf")
-
-    """
-    ANM vs Number of Peer Attachment and Number of Peer in Network
-    """
-
-    plotter = Plotter(height=4, aspect=3/2, num_rows=1, num_cols=1, legend_spacing=0.06, subplot_title_spacing=0.36)
 
     plotter.plot(
         data_path="./figures/data/anm_peer_attach_llama_mmlu.csv",
         plot_type="bar",
         x="# Peer",
-        y="Average Number of Messages",
-        hue="# Peer Attach"
+        y="# Messages",
+        hue="# Peer Attach",
+        subplot_title="(b)",
     )
 
-    plotter.add_legend(legend_cols=5)
-    plotter.save_or_show("./figures/output/anm_peer_attach.pdf")
+    plotter.add_legend(legend_cols=4)
+    plotter.save_or_show("./figures/output/sensitivity_peer_attach.pdf")
 
 
     """
-    F1 vs LLM models and datasets
+    Sensitivity on LLM models and datasets
     """
-
-    plotter = Plotter(height=4, aspect=3/2, num_rows=1, num_cols=1, legend_spacing=0.06, subplot_title_spacing=0.36)
+    plotter = Plotter(height=3.4, aspect=4/3, num_rows=2, num_cols=1, legend_spacing=0.02, subplot_title_spacing=0.28)
 
     plotter.plot(
         data_path="./figures/data/f1_llm_datasets.csv",
         plot_type="bar",
         x="Dataset",
         y="F1 (%)",
-        hue="LLM"
+        hue="LLM",
+        subplot_title="(a)",
     )
-
-    plotter.add_legend(legend_cols=3)
-    plotter.save_or_show("./figures/output/f1_llm_datasets.pdf")
-
-    """
-    ANM vs LLM models and datasets
-    """
-
-    plotter = Plotter(height=4, aspect=3/2, num_rows=1, num_cols=1, legend_spacing=0.06, subplot_title_spacing=0.36)
 
     plotter.plot(
         data_path="./figures/data/anm_llm_datasets.csv",
         plot_type="bar",
         x="Dataset",
-        y="Average Number of Messages",
-        hue="LLM"
+        y="# Messages",
+        hue="LLM",
+        subplot_title="(b)",
     )
 
     plotter.add_legend(legend_cols=3)
-    plotter.save_or_show("./figures/output/anm_llm_datasets.pdf")
+    plotter.save_or_show("./figures/output/sensitivity_llm_datasets.pdf")
 
 
     """
-    F1 vs number of query neighbors
+    Sensitivity on number of query neighbors
     """
-
-    plotter = Plotter(height=4, aspect=3/2, num_rows=1, num_cols=1, legend_spacing=0.08, subplot_title_spacing=0.36)
+    plotter = Plotter(height=3.4, aspect=4/3, num_rows=2, num_cols=1, legend_spacing=0.02, subplot_title_spacing=0.28)
 
     plotter.plot(
         data_path="./figures/data/f1_query_neighbor_llama_mmlu.csv",
         plot_type="bar",
         x="# Peers",
         y="F1 (%)",
-        hue="# Query Neighbors"
+        hue="# Query Neighbors",
+        subplot_title="(a)",
     )
-
-    plotter.add_legend(legend_cols=4)
-    plotter.save_or_show("./figures/output/f1_query_neighbor.pdf")
-
-    """
-    Average number of messages vs number of query neighbors
-    """
-
-    plotter = Plotter(height=4, aspect=3/2, num_rows=1, num_cols=1, legend_spacing=0.08, subplot_title_spacing=0.36)
 
     plotter.plot(
         data_path="./figures/data/anm_query_neighbor_llama_mmlu.csv",
         plot_type="bar",
         x="# Peers",
-        y="Average Number of Messages",
-        hue="# Query Neighbors"
+        y="# Messages",
+        hue="# Query Neighbors",
+        subplot_title="(b)",
     )
 
     plotter.add_legend(legend_cols=4)
-    plotter.save_or_show("./figures/output/anm_query_neighbor.pdf")
+    plotter.save_or_show("./figures/output/sensitivity_query_neighbor.pdf")
 
 
 
