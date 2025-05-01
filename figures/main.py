@@ -125,7 +125,7 @@ def main():
     """
     Sensitivity on Number of Peer Attachment
     """
-    plotter = Plotter(height=3.4, aspect=4/3, num_rows=2, num_cols=1, legend_spacing=0.02, subplot_title_spacing=0.28)
+    plotter = Plotter(height=3.8, aspect=1/1, num_rows=1, num_cols=2, legend_spacing=0.06, subplot_title_spacing=0.28)
 
     plotter.plot(
         data_path="./figures/data/f1_peer_attach_llama_mmlu.csv",
@@ -152,7 +152,7 @@ def main():
     """
     Sensitivity on LLM models and datasets
     """
-    plotter = Plotter(height=3.4, aspect=4/3, num_rows=2, num_cols=1, legend_spacing=0.02, subplot_title_spacing=0.28)
+    plotter = Plotter(height=3.8, aspect=1/1, num_rows=1, num_cols=2, legend_spacing=0.06, subplot_title_spacing=0.28)
 
     plotter.plot(
         data_path="./figures/data/f1_llm_datasets.csv",
@@ -179,7 +179,7 @@ def main():
     """
     Sensitivity on number of query neighbors
     """
-    plotter = Plotter(height=3.4, aspect=4/3, num_rows=2, num_cols=1, legend_spacing=0.02, subplot_title_spacing=0.28)
+    plotter = Plotter(height=3.8, aspect=1/1, num_rows=1, num_cols=2, legend_spacing=0.06, subplot_title_spacing=0.28)
 
     plotter.plot(
         data_path="./figures/data/f1_query_neighbor_llama_mmlu.csv",
