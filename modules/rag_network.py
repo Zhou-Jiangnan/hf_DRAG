@@ -116,6 +116,7 @@ class DRAGNetwork:
             message_penalty: float = 0.02,
             hop_penalty: float = 0.01,
             relevance_weight: float = 0.2,
+      
             progress_weight: float = 0.3,
             topic_match_bonus: float = 0.2,
             revisit_penalty: float = 0.1,
@@ -184,6 +185,7 @@ class DRAGNetwork:
                 if action >= len(selected_neighbors):
                     action = len(selected_neighbors) - 1
                 next_peer_id = selected_neighbors[action]
+                
                 next_score = self.get_peer_relevance_score(next_peer_id, question)
                 topic_reward = topic_match_bonus if (question_topic and question_topic in self.peer_topics[next_peer_id]) else 0.0
                 revisit_cost = revisit_penalty if next_peer_id in visited_ids else 0.0
@@ -200,6 +202,7 @@ class DRAGNetwork:
                 step_done = 1.0 if next_score > query_confidence_threshold else 0.0
                 if step_done:
                     reward += reward_hit
+                    
 
                 transitions.append({
                     "state": state_tensor.detach().cpu(),
@@ -209,11 +212,13 @@ class DRAGNetwork:
                     "log_prob": log_prob,
                     "value": value,
                     "reward": reward,
+                  
                     "done": step_done,
                 })
 
                 current_peer_id = next_peer_id
                 visited_ids.add(current_peer_id)
+                
                 if step_done:
                     done = True
                     break

@@ -139,6 +139,7 @@ def run_simulation(cfg: Namespace):
             message_penalty=cfg.rag.ppo_message_penalty,
             hop_penalty=cfg.rag.ppo_hop_penalty,
             relevance_weight=cfg.rag.ppo_relevance_weight,
+          
             progress_weight=cfg.rag.ppo_progress_weight,
             topic_match_bonus=cfg.rag.ppo_topic_match_bonus,
             revisit_penalty=cfg.rag.ppo_revisit_penalty,
