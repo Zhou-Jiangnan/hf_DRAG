@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from modules.exp_logger import ExpLogger
 from modules.data_types import Datapoint, Testcase
+from modules.ppo_router import PPORouter, PPOConfig
 from modules.rag_network import DRAGNetwork, CRAGNetwork, NoRAGNetwork
 from modules.evaluator import QAEvaluator
 from modules.options import parse_args
@@ -57,8 +58,8 @@ def run_simulation(cfg: Namespace):
     task_type = cfg.data.task_type
 
     if cfg.rag.test_mode:
-        # Only pick 20 samples from dataset in test mode
-        dataset = dataset.select(range(20))
+        # Only pick configurable number of samples from dataset in test mode
+        dataset = dataset.select(range(min(cfg.rag.test_num_samples, len(dataset))))
     else:
         if cfg.data.num_samples is not None:
             # Sample data if num_samples is specified
@@ -102,6 +103,7 @@ def run_simulation(cfg: Namespace):
     query_ttl = cfg.rag.query_ttl
 
     # Initialize RAG network with peers and knowledges
+    ppo_router = None
     if cfg.rag.network_type == "DRAG":
         rag_net = DRAGNetwork(cfg.rag.num_peers, cfg.rag.num_peer_attachments, cfg.llm.base_url, cfg.llm.name, 
                               cfg.llm.num_ctx, cfg.rag.random_seed)
@@ -112,6 +114,32 @@ def run_simulation(cfg: Namespace):
     else:
         raise ValueError(f"Unknown network type: {cfg.rag.network_type}")
     rag_net.init_knowledge(filtered_data_points)
+
+    if cfg.rag.network_type == "DRAG" and cfg.rag.search_algorithm == "PPO":
+        ppo_cfg = PPOConfig(
+            hidden_dim=cfg.rag.ppo_hidden_dim,
+            clip_epsilon=cfg.rag.ppo_clip_epsilon,
+            value_coef=cfg.rag.ppo_value_coef,
+            entropy_coef=cfg.rag.ppo_entropy_coef,
+            learning_rate=cfg.rag.ppo_learning_rate,
+            gamma=cfg.rag.ppo_gamma,
+            gae_lambda=cfg.rag.ppo_gae_lambda,
+            update_epochs=cfg.rag.ppo_update_epochs,
+            max_candidates=cfg.rag.ppo_max_candidates,
+        )
+        ppo_router = PPORouter(ppo_cfg)
+        rag_net.ppo_train(
+            router=ppo_router,
+            data_points=filtered_data_points,
+            num_episodes=cfg.rag.ppo_train_episodes,
+            max_ttl=query_ttl,
+            query_confidence_threshold=query_confidence_threshold,
+            reward_hit=cfg.rag.ppo_reward_hit,
+            reward_miss=cfg.rag.ppo_reward_miss,
+            message_penalty=cfg.rag.ppo_message_penalty,
+            hop_penalty=cfg.rag.ppo_hop_penalty,
+            relevance_weight=cfg.rag.ppo_relevance_weight,
+        )
 
     # Run evaluation
     qa_evaluator = QAEvaluator()
@@ -134,6 +162,13 @@ def run_simulation(cfg: Namespace):
             elif cfg.rag.search_algorithm == "FL":
                 rag_answer = rag_net.flooding_query(
                     data_point.question,
+                    query_confidence_threshold=query_confidence_threshold,
+                    max_ttl=query_ttl
+                )
+            elif cfg.rag.search_algorithm == "PPO":
+                rag_answer = rag_net.ppo_query(
+                    data_point.question,
+                    router=ppo_router,
                     query_confidence_threshold=query_confidence_threshold,
                     max_ttl=query_ttl
                 )
@@ -199,4 +234,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

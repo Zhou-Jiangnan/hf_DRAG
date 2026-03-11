@@ -82,4 +82,13 @@ The following Hugging Face datasets are utilized in our experiments.
 $ python simulator.py
 ```
 
+## PPO Routing (DRAG)
+
+Set `rag.search_algorithm: 'PPO'` in `config/rag.yaml` to train a PPO router before inference.
+The PPO router is trained on retrieval-only signals (relevance/hit/hop/message rewards) and then
+used as a new routing policy alongside TARW/RW/FL.
+
+When `rag.test_mode` is enabled, the simulator now uses `rag.test_num_samples`
+instead of a hard-coded 20 samples, so you can quickly scale debug/eval size.
+
 ## DEBUG
