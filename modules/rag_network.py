@@ -5,9 +5,11 @@ from typing import Dict, List, Optional
 from loguru import logger
 import networkx as nx
 from sentence_transformers import SentenceTransformer
+import torch
 from tqdm import tqdm
 
 from modules.data_types import RAGAnswer, Datapoint
+from modules.ppo_router import PPORouter
 from modules.peer import Peer
 
 
@@ -31,6 +33,289 @@ class DRAGNetwork:
         self.peer_topics: Dict[int, List[str]] = {peer_id: [] for peer_id in range(self.num_peers)}
         self.topic_peers: Dict[str, List[int]] = {}
         self.all_topics: List[str] = []
+
+    def get_peer_relevance_score(self, peer_id: int, question: str) -> float:
+        """
+        Estimates peer relevance score without LLM generation, using only semantic retrieval.
+        """
+        top_results = self.peers[peer_id].knowledge_base.semantic_search(question, 1)
+        if len(top_results) == 0:
+            return 0.0
+        _, relevance_score = top_results[0]
+        return float(relevance_score)
+
+    def build_ppo_state_features(
+            self,
+            current_peer_id: int,
+            hop: int,
+            max_ttl: int,
+            current_score: float,
+            visited_count: int
+    ) -> List[float]:
+        degree = self.network.degree(current_peer_id)
+        max_degree = max(1, self.num_peers - 1)
+        return [
+            float(current_score),
+            float(hop / max(1, max_ttl)),
+            float((max_ttl - hop) / max(1, max_ttl)),
+            float(degree / max_degree),
+            float(visited_count / max(1, self.num_peers)),
+            float(current_peer_id / max(1, self.num_peers - 1)),
+            1.0,
+        ]
+
+    def build_ppo_candidate_features(
+            self,
+            question: str,
+            question_topic: Optional[str],
+            neighbor_ids: List[int],
+            visited_ids: set,
+            max_candidates: int
+    ) -> tuple[List[int], List[List[float]], List[bool]]:
+        scored_neighbors = []
+        for neighbor_id in neighbor_ids:
+            neighbor_score = self.get_peer_relevance_score(neighbor_id, question)
+            topic_match = 1.0 if question_topic and question_topic in self.peer_topics[neighbor_id] else 0.0
+            visited_flag = 1.0 if neighbor_id in visited_ids else 0.0
+            scored_neighbors.append((neighbor_id, neighbor_score, topic_match, visited_flag))
+
+        # Prefer unvisited + topic-matched + higher relevance neighbors
+        scored_neighbors.sort(key=lambda x: (x[3], -x[2], -x[1]))
+        selected = scored_neighbors[:max_candidates]
+
+        max_degree = max(1, self.num_peers - 1)
+        candidate_features = []
+        mask = []
+        selected_neighbors = []
+
+        for neighbor_id, neighbor_score, topic_match, visited_flag in selected:
+            selected_neighbors.append(neighbor_id)
+            candidate_features.append([
+                float(neighbor_score),
+                float(self.network.degree(neighbor_id) / max_degree),
+                float(topic_match),
+                float(visited_flag),
+            ])
+            mask.append(True)
+
+        while len(candidate_features) < max_candidates:
+            candidate_features.append([0.0, 0.0, 0.0, 1.0])
+            mask.append(False)
+
+        return selected_neighbors, candidate_features, mask
+
+    def ppo_train(
+            self,
+            router: PPORouter,
+            data_points: List[Datapoint],
+            num_episodes: int = 200,
+            max_ttl: int = 6,
+            query_confidence_threshold: float = 0.5,
+            reward_hit: float = 1.0,
+            reward_miss: float = -0.5,
+            message_penalty: float = 0.02,
+            hop_penalty: float = 0.01,
+            relevance_weight: float = 0.2,
+            progress_weight: float = 0.3,
+            topic_match_bonus: float = 0.2,
+            revisit_penalty: float = 0.1,
+    ):
+        if len(data_points) == 0:
+            logger.warning("Skip PPO training since no datapoints are provided")
+            return
+
+        for episode in tqdm(range(num_episodes), desc="Training PPO router"):
+            data_point = random.choice(data_points)
+            question = data_point.question
+            query_peer_id = random.choice(range(self.num_peers))
+            question_topic = self.peers[query_peer_id].parse_topic(question, self.all_topics)
+
+            current_peer_id = query_peer_id
+            visited_ids = {current_peer_id}
+            transitions = []
+            done = False
+
+            for hop in range(max_ttl):
+                current_score = self.get_peer_relevance_score(current_peer_id, question)
+
+                if current_score > query_confidence_threshold:
+                    if transitions:
+                        transitions[-1]["reward"] += reward_hit
+                        transitions[-1]["done"] = 1.0
+                    done = True
+                    break
+
+                neighbor_ids = list(self.network.neighbors(current_peer_id))
+                if len(neighbor_ids) == 0:
+                    if transitions:
+                        transitions[-1]["reward"] += reward_miss
+                        transitions[-1]["done"] = 1.0
+                    done = True
+                    break
+
+                state_features = self.build_ppo_state_features(
+                    current_peer_id=current_peer_id,
+                    hop=hop,
+                    max_ttl=max_ttl,
+                    current_score=current_score,
+                    visited_count=len(visited_ids),
+                )
+                selected_neighbors, candidate_features, mask = self.build_ppo_candidate_features(
+                    question=question,
+                    question_topic=question_topic,
+                    neighbor_ids=neighbor_ids,
+                    visited_ids=visited_ids,
+                    max_candidates=router.cfg.max_candidates,
+                )
+                if len(selected_neighbors) == 0:
+                    break
+
+                state_tensor = torch.tensor(state_features, dtype=torch.float, device=router.device)
+                candidates_tensor = torch.tensor(candidate_features, dtype=torch.float, device=router.device)
+                mask_tensor = torch.tensor(mask, dtype=torch.bool, device=router.device)
+
+                action, log_prob, value, _ = router.act(
+                    state=state_tensor,
+                    candidates=candidates_tensor,
+                    mask=mask_tensor,
+                    deterministic=False,
+                )
+
+                if action >= len(selected_neighbors):
+                    action = len(selected_neighbors) - 1
+                next_peer_id = selected_neighbors[action]
+                next_score = self.get_peer_relevance_score(next_peer_id, question)
+                topic_reward = topic_match_bonus if (question_topic and question_topic in self.peer_topics[next_peer_id]) else 0.0
+                revisit_cost = revisit_penalty if next_peer_id in visited_ids else 0.0
+                progress_reward = progress_weight * (next_score - current_score)
+                reward = (
+                    relevance_weight * next_score
+                    + progress_reward
+                    + topic_reward
+                    - message_penalty
+                    - hop_penalty
+                    - revisit_cost
+                )
+
+                step_done = 1.0 if next_score > query_confidence_threshold else 0.0
+                if step_done:
+                    reward += reward_hit
+
+                transitions.append({
+                    "state": state_tensor.detach().cpu(),
+                    "candidates": candidates_tensor.detach().cpu(),
+                    "mask": mask_tensor.detach().cpu(),
+                    "action": action,
+                    "log_prob": log_prob,
+                    "value": value,
+                    "reward": reward,
+                    "done": step_done,
+                })
+
+                current_peer_id = next_peer_id
+                visited_ids.add(current_peer_id)
+                if step_done:
+                    done = True
+                    break
+
+            if not done and transitions:
+                transitions[-1]["reward"] += reward_miss
+                transitions[-1]["done"] = 1.0
+
+            router.update(transitions)
+
+            if (episode + 1) % 50 == 0:
+                logger.debug(f"PPO training episode {episode + 1}/{num_episodes} finished")
+
+    def ppo_query(
+            self,
+            question: str,
+            router: PPORouter,
+            query_peer_id: Optional[int] = None,
+            query_confidence_threshold: float = 0.5,
+            max_ttl: int = 6,
+    ) -> RAGAnswer:
+        """
+        Queries the network using a trained PPO policy to select the next hop.
+        """
+        num_messages = 0
+
+        if query_peer_id is None:
+            query_peer_id = random.choice(range(self.num_peers))
+            logger.debug(f"Randomly selected starting peer: {query_peer_id}")
+
+        question_topic = self.peers[query_peer_id].parse_topic(question, self.all_topics)
+        current_peer_id = query_peer_id
+        visited_ids = {current_peer_id}
+
+        for hop in range(max_ttl):
+            current_answer, relevant_knowledge, relevant_score, is_query_hit = \
+                self.peers[current_peer_id].query(question, query_confidence_threshold)
+            num_messages += 1
+
+            if current_answer is not None:
+                return RAGAnswer(
+                    answer=str(current_answer),
+                    relevant_knowledge=relevant_knowledge,
+                    relevant_score=relevant_score,
+                    num_hops=hop,
+                    num_messages=num_messages,
+                    is_query_hit=is_query_hit
+                )
+
+            neighbor_ids = list(self.network.neighbors(current_peer_id))
+            if len(neighbor_ids) == 0:
+                break
+
+            current_score = self.get_peer_relevance_score(current_peer_id, question)
+            state_features = self.build_ppo_state_features(
+                current_peer_id=current_peer_id,
+                hop=hop,
+                max_ttl=max_ttl,
+                current_score=current_score,
+                visited_count=len(visited_ids),
+            )
+            selected_neighbors, candidate_features, mask = self.build_ppo_candidate_features(
+                question=question,
+                question_topic=question_topic,
+                neighbor_ids=neighbor_ids,
+                visited_ids=visited_ids,
+                max_candidates=router.cfg.max_candidates,
+            )
+            if len(selected_neighbors) == 0:
+                break
+
+            state_tensor = torch.tensor(state_features, dtype=torch.float, device=router.device)
+            candidates_tensor = torch.tensor(candidate_features, dtype=torch.float, device=router.device)
+            mask_tensor = torch.tensor(mask, dtype=torch.bool, device=router.device)
+
+            action, _, _, _ = router.act(
+                state=state_tensor,
+                candidates=candidates_tensor,
+                mask=mask_tensor,
+                deterministic=True,
+            )
+
+            if action >= len(selected_neighbors):
+                break
+
+            next_peer_id = selected_neighbors[action]
+            if next_peer_id in visited_ids and len(visited_ids) < self.num_peers:
+                non_visited = [nid for nid in selected_neighbors if nid not in visited_ids]
+                if non_visited:
+                    next_peer_id = non_visited[0]
+
+            current_peer_id = next_peer_id
+            visited_ids.add(current_peer_id)
+
+        return RAGAnswer(
+            answer="",
+            relevant_knowledge="",
+            relevant_score=0.0,
+            num_hops=max_ttl,
+            num_messages=num_messages,
+            is_query_hit=False
+        )
 
     def init_knowledge(self, data_points: List[Datapoint]):
         """
