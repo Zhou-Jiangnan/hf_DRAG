@@ -72,15 +72,24 @@ class DRAGNetwork:
             visited_ids: set,
             max_candidates: int
     ) -> tuple[List[int], List[List[float]], List[bool]]:
-        selected_neighbors = neighbor_ids[:max_candidates]
-        max_degree = max(1, self.num_peers - 1)
-        candidate_features = []
-        mask = []
-
-        for neighbor_id in selected_neighbors:
+        scored_neighbors = []
+        for neighbor_id in neighbor_ids:
             neighbor_score = self.get_peer_relevance_score(neighbor_id, question)
             topic_match = 1.0 if question_topic and question_topic in self.peer_topics[neighbor_id] else 0.0
             visited_flag = 1.0 if neighbor_id in visited_ids else 0.0
+            scored_neighbors.append((neighbor_id, neighbor_score, topic_match, visited_flag))
+
+        # Prefer unvisited + topic-matched + higher relevance neighbors
+        scored_neighbors.sort(key=lambda x: (x[3], -x[2], -x[1]))
+        selected = scored_neighbors[:max_candidates]
+
+        max_degree = max(1, self.num_peers - 1)
+        candidate_features = []
+        mask = []
+        selected_neighbors = []
+
+        for neighbor_id, neighbor_score, topic_match, visited_flag in selected:
+            selected_neighbors.append(neighbor_id)
             candidate_features.append([
                 float(neighbor_score),
                 float(self.network.degree(neighbor_id) / max_degree),
@@ -107,6 +116,10 @@ class DRAGNetwork:
             message_penalty: float = 0.02,
             hop_penalty: float = 0.01,
             relevance_weight: float = 0.2,
+      
+            progress_weight: float = 0.3,
+            topic_match_bonus: float = 0.2,
+            revisit_penalty: float = 0.1,
     ):
         if len(data_points) == 0:
             logger.warning("Skip PPO training since no datapoints are provided")
@@ -172,7 +185,24 @@ class DRAGNetwork:
                 if action >= len(selected_neighbors):
                     action = len(selected_neighbors) - 1
                 next_peer_id = selected_neighbors[action]
-                reward = relevance_weight * current_score - message_penalty - hop_penalty
+                
+                next_score = self.get_peer_relevance_score(next_peer_id, question)
+                topic_reward = topic_match_bonus if (question_topic and question_topic in self.peer_topics[next_peer_id]) else 0.0
+                revisit_cost = revisit_penalty if next_peer_id in visited_ids else 0.0
+                progress_reward = progress_weight * (next_score - current_score)
+                reward = (
+                    relevance_weight * next_score
+                    + progress_reward
+                    + topic_reward
+                    - message_penalty
+                    - hop_penalty
+                    - revisit_cost
+                )
+
+                step_done = 1.0 if next_score > query_confidence_threshold else 0.0
+                if step_done:
+                    reward += reward_hit
+                    
 
                 transitions.append({
                     "state": state_tensor.detach().cpu(),
@@ -182,11 +212,16 @@ class DRAGNetwork:
                     "log_prob": log_prob,
                     "value": value,
                     "reward": reward,
-                    "done": 0.0,
+                  
+                    "done": step_done,
                 })
 
                 current_peer_id = next_peer_id
                 visited_ids.add(current_peer_id)
+                
+                if step_done:
+                    done = True
+                    break
 
             if not done and transitions:
                 transitions[-1]["reward"] += reward_miss

@@ -53,6 +53,11 @@ def parse_args():
     parser.add_argument("--rag.ppo_message_penalty", type=float)
     parser.add_argument("--rag.ppo_hop_penalty", type=float)
     parser.add_argument("--rag.ppo_relevance_weight", type=float)
+    
+    parser.add_argument("--rag.ppo_progress_weight", type=float)
+    parser.add_argument("--rag.ppo_topic_match_bonus", type=float)
+    parser.add_argument("--rag.ppo_revisit_penalty", type=float)
+    
     parser.add_argument("--rag.ppo_hidden_dim", type=int)
     parser.add_argument("--rag.ppo_max_candidates", type=int)
 
