@@ -73,6 +73,8 @@ The following Hugging Face datasets are utilized in our experiments.
 - [MMLU](https://huggingface.co/datasets/cais/mmlu)
 - [medical_extended](https://huggingface.co/datasets/sarus-tech/medical_extended)
 - [news-category-dataset](https://huggingface.co/datasets/heegyu/news-category-dataset)
+- [NQ-Open](https://huggingface.co/datasets/google-research-datasets/nq_open)
+- [HotpotQA](https://huggingface.co/datasets/hotpotqa/hotpot_qa)
 
 > Use `HF_HUB_CACHE` to configure where repositories from the Hub will be cached locally (models, datasets and spaces).
 
@@ -86,7 +88,10 @@ $ python simulator.py
 
 Set `rag.search_algorithm: 'PPO'` in `config/rag.yaml` to train a PPO router before inference.
 The PPO router is trained on retrieval-only signals (relevance/hit/hop/message rewards) and then
-used as a new routing policy alongside TARW/RW/FL.
+used as new routing policies alongside TARW/RW/FL (PPO and GRPO).
+
+By default, PPO uses `rag.ppo_device: auto` and will run on GPU (`cuda`) when available,
+otherwise fallback to CPU.
 
 When `rag.test_mode` is enabled, the simulator now uses `rag.test_num_samples`
 instead of a hard-coded 20 samples, so you can quickly scale debug/eval size.
@@ -134,6 +139,8 @@ Run the same command while switching:
 - `--rag.search_algorithm TARW`
 - `--rag.search_algorithm RW`
 - `--rag.search_algorithm FL`
+- `--rag.search_algorithm PPO`
+- `--rag.search_algorithm GRPO`
 
 Keep all other arguments (dataset, seed, TTL, number of peers, confidence threshold)
 the same for fair comparison.
@@ -148,9 +155,17 @@ Each run writes an experiment folder with:
 Tip: use `--rag.random_seed` to keep the graph/data order fixed while comparing PPO
 to TARW/RW/FL.
 
+For datasets without explicit topic labels (e.g., NQ-Open / HotpotQA), this project supports
+`topic_path: __const__:<topic_name>` to assign a constant topic for DRAG partitioning.
+If `answer_path` points to a list field, the simulator will automatically take the first answer.
+
+GRPO uses group-relative advantages and can be enabled with `--rag.search_algorithm GRPO` plus `--rag.grpo_*` hyperparameters.
+
 If PPO underperforms TARW, start tuning these reward-shaping knobs:
 - `--rag.ppo_progress_weight` (encourage moving toward higher-relevance neighbors)
 - `--rag.ppo_topic_match_bonus` (bias toward topic-consistent hops)
 - `--rag.ppo_revisit_penalty` (discourage cycling back to visited peers)
+- `--rag.ppo_hop_progressive_penalty` (increase hop penalty at later steps)
+- `--rag.ppo_early_hit_bonus` (reward early successful hits to reduce avg_num_hops)
 
 ## DEBUG

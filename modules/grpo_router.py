@@ -7,7 +7,7 @@ from torch.distributions import Categorical
 
 
 @dataclass
-class PPOConfig:
+class GRPOConfig:
     state_dim: int = 7
     candidate_dim: int = 4
     hidden_dim: int = 64
@@ -16,10 +16,10 @@ class PPOConfig:
     entropy_coef: float = 0.01
     learning_rate: float = 3e-4
     gamma: float = 0.99
-    gae_lambda: float = 0.95
     update_epochs: int = 4
     max_grad_norm: float = 0.5
     max_candidates: int = 8
+    group_size: int = 4
 
 
 class _PolicyValueNet(nn.Module):
@@ -42,22 +42,9 @@ class _PolicyValueNet(nn.Module):
             nn.Linear(hidden_dim, 1),
         )
 
-    def forward(
-        self,
-        state_tensor: torch.Tensor,
-        candidate_tensor: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Args:
-            state_tensor: [B, state_dim]
-            candidate_tensor: [B, A, candidate_dim]
-
-        Returns:
-            logits: [B, A]
-            values: [B]
-        """
-        encoded_state = self.state_encoder(state_tensor)  # [B, H]
-        batch_size, action_size, _ = candidate_tensor.shape
+    def forward(self, state_tensor: torch.Tensor, candidate_tensor: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        encoded_state = self.state_encoder(state_tensor)
+        _, action_size, _ = candidate_tensor.shape
         repeated_state = encoded_state.unsqueeze(1).repeat(1, action_size, 1)
         action_input = torch.cat([repeated_state, candidate_tensor], dim=-1)
         logits = self.action_head(action_input).squeeze(-1)
@@ -65,10 +52,9 @@ class _PolicyValueNet(nn.Module):
         return logits, values
 
 
-class PPORouter:
-    def __init__(self, cfg: PPOConfig, device: Optional[str] = "auto"):
+class GRPORouter:
+    def __init__(self, cfg: GRPOConfig, device: Optional[str] = "auto"):
         self.cfg = cfg
-
         if device in (None, "auto"):
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
         else:
@@ -91,12 +77,6 @@ class PPORouter:
         mask: torch.Tensor,
         deterministic: bool = False,
     ) -> Tuple[int, float, float, float]:
-        """
-        Args:
-            state: [state_dim]
-            candidates: [A, candidate_dim]
-            mask: [A] bool
-        """
         with torch.no_grad():
             logits, value = self.model(state.unsqueeze(0), candidates.unsqueeze(0))
             dist = self._masked_categorical(logits.squeeze(0), mask)
@@ -108,32 +88,55 @@ class PPORouter:
             entropy = dist.entropy().item()
             return action, log_prob, value.item(), entropy
 
-    def update(self, transitions: List[dict]):
-        if not transitions:
+    def _discounted_returns(self, rewards: List[float]) -> List[float]:
+        returns = []
+        running = 0.0
+        for reward in reversed(rewards):
+            running = reward + self.cfg.gamma * running
+            returns.append(running)
+        return list(reversed(returns))
+
+    def update(self, grouped_episodes: List[List[dict]]):
+        if not grouped_episodes:
             return
 
-        states = torch.stack([t["state"] for t in transitions]).to(self.device)
-        candidates = torch.stack([t["candidates"] for t in transitions]).to(self.device)
-        masks = torch.stack([t["mask"] for t in transitions]).to(self.device)
-        actions = torch.tensor([t["action"] for t in transitions], dtype=torch.long, device=self.device)
-        old_log_probs = torch.tensor([t["log_prob"] for t in transitions], dtype=torch.float, device=self.device)
-        rewards = torch.tensor([t["reward"] for t in transitions], dtype=torch.float, device=self.device)
-        dones = torch.tensor([t["done"] for t in transitions], dtype=torch.float, device=self.device)
-        old_values = torch.tensor([t["value"] for t in transitions], dtype=torch.float, device=self.device)
+        episodes = [ep for ep in grouped_episodes if len(ep) > 0]
+        if not episodes:
+            return
 
-        advantages = torch.zeros_like(rewards)
-        gae = 0.0
-        next_value = 0.0
-        for t in reversed(range(len(transitions))):
-            delta = rewards[t] + self.cfg.gamma * next_value * (1.0 - dones[t]) - old_values[t]
-            gae = delta + self.cfg.gamma * self.cfg.gae_lambda * (1.0 - dones[t]) * gae
-            advantages[t] = gae
-            next_value = old_values[t]
-        returns = advantages + old_values
+        episode_scores = torch.tensor([sum(step["reward"] for step in ep) for ep in episodes], dtype=torch.float)
+        score_std = episode_scores.std(unbiased=False)
+        if score_std > 1e-8:
+            group_adv = (episode_scores - episode_scores.mean()) / (score_std + 1e-8)
+        else:
+            group_adv = episode_scores - episode_scores.mean()
 
-        adv_std = advantages.std(unbiased=False)
-        if adv_std > 1e-8:
-            advantages = (advantages - advantages.mean()) / (adv_std + 1e-8)
+        states = []
+        candidates = []
+        masks = []
+        actions = []
+        old_log_probs = []
+        advantages = []
+        returns = []
+
+        for ep_idx, episode in enumerate(episodes):
+            ep_returns = self._discounted_returns([step["reward"] for step in episode])
+            for step_idx, step in enumerate(episode):
+                states.append(step["state"])
+                candidates.append(step["candidates"])
+                masks.append(step["mask"])
+                actions.append(step["action"])
+                old_log_probs.append(step["log_prob"])
+                advantages.append(group_adv[ep_idx].item())
+                returns.append(ep_returns[step_idx])
+
+        states = torch.stack(states).to(self.device)
+        candidates = torch.stack(candidates).to(self.device)
+        masks = torch.stack(masks).to(self.device)
+        actions = torch.tensor(actions, dtype=torch.long, device=self.device)
+        old_log_probs = torch.tensor(old_log_probs, dtype=torch.float, device=self.device)
+        advantages = torch.tensor(advantages, dtype=torch.float, device=self.device)
+        returns = torch.tensor(returns, dtype=torch.float, device=self.device)
 
         for _ in range(self.cfg.update_epochs):
             logits, values = self.model(states, candidates)

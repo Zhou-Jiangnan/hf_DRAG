@@ -1,0 +1,12 @@
+data:
+  load:
+    path: google-research-datasets/nq_open
+    split: train
+  # task_type: mcqa for Multiple Choice Question Answering; ogqa for Open Generative Question Answering
+  task_type: ogqa
+  # NQ-open has no explicit topic label, use a constant topic for DRAG partitioning.
+  topic_path: __const__:open_domain
+  question_path: question
+  # `answer` is a list in NQ-open, simulator will use the first answer by default.
+  answer_path: answer
+  num_samples: 10000

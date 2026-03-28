@@ -41,6 +41,7 @@ def parse_args():
     parser.add_argument("--rag.filter_out_qa_ratio", type=float)
 
     parser.add_argument("--rag.ppo_train_episodes", type=int)
+    parser.add_argument("--rag.ppo_device", type=str)
     parser.add_argument("--rag.ppo_update_epochs", type=int)
     parser.add_argument("--rag.ppo_learning_rate", type=float)
     parser.add_argument("--rag.ppo_clip_epsilon", type=float)
@@ -53,13 +54,25 @@ def parse_args():
     parser.add_argument("--rag.ppo_message_penalty", type=float)
     parser.add_argument("--rag.ppo_hop_penalty", type=float)
     parser.add_argument("--rag.ppo_relevance_weight", type=float)
-    
     parser.add_argument("--rag.ppo_progress_weight", type=float)
     parser.add_argument("--rag.ppo_topic_match_bonus", type=float)
     parser.add_argument("--rag.ppo_revisit_penalty", type=float)
-    
+    parser.add_argument("--rag.ppo_hop_progressive_penalty", type=float)
+    parser.add_argument("--rag.ppo_early_hit_bonus", type=float)
     parser.add_argument("--rag.ppo_hidden_dim", type=int)
     parser.add_argument("--rag.ppo_max_candidates", type=int)
+
+    parser.add_argument("--rag.grpo_train_episodes", type=int)
+    parser.add_argument("--rag.grpo_device", type=str)
+    parser.add_argument("--rag.grpo_update_epochs", type=int)
+    parser.add_argument("--rag.grpo_learning_rate", type=float)
+    parser.add_argument("--rag.grpo_clip_epsilon", type=float)
+    parser.add_argument("--rag.grpo_entropy_coef", type=float)
+    parser.add_argument("--rag.grpo_value_coef", type=float)
+    parser.add_argument("--rag.grpo_gamma", type=float)
+    parser.add_argument("--rag.grpo_group_size", type=int)
+    parser.add_argument("--rag.grpo_hidden_dim", type=int)
+    parser.add_argument("--rag.grpo_max_candidates", type=int)
 
     parser.add_argument("--config", action="config")
 

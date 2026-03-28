@@ -12,6 +12,7 @@ from tqdm import tqdm
 from modules.exp_logger import ExpLogger
 from modules.data_types import Datapoint, Testcase
 from modules.ppo_router import PPORouter, PPOConfig
+from modules.grpo_router import GRPORouter, GRPOConfig
 from modules.rag_network import DRAGNetwork, CRAGNetwork, NoRAGNetwork
 from modules.evaluator import QAEvaluator
 from modules.options import parse_args
@@ -21,6 +22,9 @@ def get_nested_value(data_dict: dict, dot_key_path: str):
     """
     Retrieves a nested value from a dictionary using a dot-separated key path.
 
+    Special syntax:
+    - "__const__:VALUE": returns VALUE directly (useful for datasets without topic labels).
+
     Args:
         data_dict: The dictionary to retrieve the value from.
         dot_key_path: A string representing the nested keys separated by dots (e.g., "key1.key2.key3").
@@ -28,11 +32,25 @@ def get_nested_value(data_dict: dict, dot_key_path: str):
     Returns:
         The value at the specified path in the dictionary.
     """
+    if dot_key_path.startswith("__const__:"):
+        return dot_key_path.split(":", 1)[1]
+
     keys = dot_key_path.split(".")
     value = data_dict
     for key in keys:
         value = value[key]
     return value
+
+
+def normalize_field_value(value, *, prefer_first: bool = False) -> str:
+    """Normalize dataset field values into strings for Datapoint construction."""
+    if isinstance(value, (list, tuple)):
+        if len(value) == 0:
+            return ""
+        if prefer_first:
+            return str(value[0])
+        return " ".join(str(v) for v in value)
+    return str(value)
 
 
 def run_simulation(cfg: Namespace):
@@ -69,15 +87,15 @@ def run_simulation(cfg: Namespace):
 
     # Prepare data points
     for item in dataset:
-        topic = get_nested_value(item, cfg.data.topic_path)
-        question = get_nested_value(item, cfg.data.question_path)
-        answer = get_nested_value(item, cfg.data.answer_path)
+        topic = normalize_field_value(get_nested_value(item, cfg.data.topic_path))
+        question = normalize_field_value(get_nested_value(item, cfg.data.question_path))
+        answer = normalize_field_value(get_nested_value(item, cfg.data.answer_path), prefer_first=True)
         if task_type == "mcqa":
-            choices = get_nested_value(item, cfg.data.choices_path)
+            choices = normalize_field_value(get_nested_value(item, cfg.data.choices_path))
             connection_term = " Select the best answer from the following candidates, replying with 1, 2, 3, or 4: "
-            question = str(question) + connection_term + str(choices)
+            question = question + connection_term + choices
 
-        data_point = Datapoint(topic=str(topic), question=str(question), answer=str(answer))
+        data_point = Datapoint(topic=topic, question=question, answer=answer)
         all_topics.add(str(topic))
         data_points.append(data_point)
     
@@ -104,6 +122,7 @@ def run_simulation(cfg: Namespace):
 
     # Initialize RAG network with peers and knowledges
     ppo_router = None
+    grpo_router = None
     if cfg.rag.network_type == "DRAG":
         rag_net = DRAGNetwork(cfg.rag.num_peers, cfg.rag.num_peer_attachments, cfg.llm.base_url, cfg.llm.name, 
                               cfg.llm.num_ctx, cfg.rag.random_seed)
@@ -127,7 +146,8 @@ def run_simulation(cfg: Namespace):
             update_epochs=cfg.rag.ppo_update_epochs,
             max_candidates=cfg.rag.ppo_max_candidates,
         )
-        ppo_router = PPORouter(ppo_cfg)
+        ppo_router = PPORouter(ppo_cfg, device=cfg.rag.ppo_device)
+        logger.info(f"PPO router device: {ppo_router.device}")
         rag_net.ppo_train(
             router=ppo_router,
             data_points=filtered_data_points,
@@ -139,10 +159,42 @@ def run_simulation(cfg: Namespace):
             message_penalty=cfg.rag.ppo_message_penalty,
             hop_penalty=cfg.rag.ppo_hop_penalty,
             relevance_weight=cfg.rag.ppo_relevance_weight,
-          
             progress_weight=cfg.rag.ppo_progress_weight,
             topic_match_bonus=cfg.rag.ppo_topic_match_bonus,
             revisit_penalty=cfg.rag.ppo_revisit_penalty,
+            hop_progressive_penalty=cfg.rag.ppo_hop_progressive_penalty,
+            early_hit_bonus=cfg.rag.ppo_early_hit_bonus,
+        )
+    elif cfg.rag.network_type == "DRAG" and cfg.rag.search_algorithm == "GRPO":
+        grpo_cfg = GRPOConfig(
+            hidden_dim=cfg.rag.grpo_hidden_dim,
+            clip_epsilon=cfg.rag.grpo_clip_epsilon,
+            value_coef=cfg.rag.grpo_value_coef,
+            entropy_coef=cfg.rag.grpo_entropy_coef,
+            learning_rate=cfg.rag.grpo_learning_rate,
+            gamma=cfg.rag.grpo_gamma,
+            update_epochs=cfg.rag.grpo_update_epochs,
+            max_candidates=cfg.rag.grpo_max_candidates,
+            group_size=cfg.rag.grpo_group_size,
+        )
+        grpo_router = GRPORouter(grpo_cfg, device=cfg.rag.grpo_device)
+        logger.info(f"GRPO router device: {grpo_router.device}")
+        rag_net.grpo_train(
+            router=grpo_router,
+            data_points=filtered_data_points,
+            num_episodes=cfg.rag.grpo_train_episodes,
+            max_ttl=query_ttl,
+            query_confidence_threshold=query_confidence_threshold,
+            reward_hit=cfg.rag.ppo_reward_hit,
+            reward_miss=cfg.rag.ppo_reward_miss,
+            message_penalty=cfg.rag.ppo_message_penalty,
+            hop_penalty=cfg.rag.ppo_hop_penalty,
+            relevance_weight=cfg.rag.ppo_relevance_weight,
+            progress_weight=cfg.rag.ppo_progress_weight,
+            topic_match_bonus=cfg.rag.ppo_topic_match_bonus,
+            revisit_penalty=cfg.rag.ppo_revisit_penalty,
+            hop_progressive_penalty=cfg.rag.ppo_hop_progressive_penalty,
+            early_hit_bonus=cfg.rag.ppo_early_hit_bonus,
         )
 
     # Run evaluation
@@ -173,6 +225,13 @@ def run_simulation(cfg: Namespace):
                 rag_answer = rag_net.ppo_query(
                     data_point.question,
                     router=ppo_router,
+                    query_confidence_threshold=query_confidence_threshold,
+                    max_ttl=query_ttl
+                )
+            elif cfg.rag.search_algorithm == "GRPO":
+                rag_answer = rag_net.grpo_query(
+                    data_point.question,
+                    router=grpo_router,
                     query_confidence_threshold=query_confidence_threshold,
                     max_ttl=query_ttl
                 )

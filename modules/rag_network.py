@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from modules.data_types import RAGAnswer, Datapoint
 from modules.ppo_router import PPORouter
+from modules.grpo_router import GRPORouter
 from modules.peer import Peer
 
 
@@ -116,10 +117,11 @@ class DRAGNetwork:
             message_penalty: float = 0.02,
             hop_penalty: float = 0.01,
             relevance_weight: float = 0.2,
-      
             progress_weight: float = 0.3,
             topic_match_bonus: float = 0.2,
             revisit_penalty: float = 0.1,
+            hop_progressive_penalty: float = 0.02,
+            early_hit_bonus: float = 0.3,
     ):
         if len(data_points) == 0:
             logger.warning("Skip PPO training since no datapoints are provided")
@@ -185,24 +187,25 @@ class DRAGNetwork:
                 if action >= len(selected_neighbors):
                     action = len(selected_neighbors) - 1
                 next_peer_id = selected_neighbors[action]
-                
                 next_score = self.get_peer_relevance_score(next_peer_id, question)
                 topic_reward = topic_match_bonus if (question_topic and question_topic in self.peer_topics[next_peer_id]) else 0.0
                 revisit_cost = revisit_penalty if next_peer_id in visited_ids else 0.0
                 progress_reward = progress_weight * (next_score - current_score)
+                hop_ratio = (hop + 1) / max(1, max_ttl)
+                progressive_hop_cost = hop_progressive_penalty * hop_ratio
                 reward = (
                     relevance_weight * next_score
                     + progress_reward
                     + topic_reward
                     - message_penalty
                     - hop_penalty
+                    - progressive_hop_cost
                     - revisit_cost
                 )
 
                 step_done = 1.0 if next_score > query_confidence_threshold else 0.0
                 if step_done:
-                    reward += reward_hit
-                    
+                    reward += reward_hit + early_hit_bonus * (1.0 - hop_ratio)
 
                 transitions.append({
                     "state": state_tensor.detach().cpu(),
@@ -212,13 +215,11 @@ class DRAGNetwork:
                     "log_prob": log_prob,
                     "value": value,
                     "reward": reward,
-                  
                     "done": step_done,
                 })
 
                 current_peer_id = next_peer_id
                 visited_ids.add(current_peer_id)
-                
                 if step_done:
                     done = True
                     break
@@ -321,6 +322,229 @@ class DRAGNetwork:
             num_messages=num_messages,
             is_query_hit=False
         )
+
+
+    def grpo_train(
+            self,
+            router: GRPORouter,
+            data_points: List[Datapoint],
+            num_episodes: int = 200,
+            max_ttl: int = 6,
+            query_confidence_threshold: float = 0.5,
+            reward_hit: float = 1.0,
+            reward_miss: float = -0.5,
+            message_penalty: float = 0.02,
+            hop_penalty: float = 0.01,
+            relevance_weight: float = 0.2,
+            progress_weight: float = 0.3,
+            topic_match_bonus: float = 0.2,
+            revisit_penalty: float = 0.1,
+            hop_progressive_penalty: float = 0.02,
+            early_hit_bonus: float = 0.3,
+    ):
+        if len(data_points) == 0:
+            logger.warning("Skip GRPO training since no datapoints are provided")
+            return
+
+        for episode in tqdm(range(num_episodes), desc="Training GRPO router"):
+            data_point = random.choice(data_points)
+            question = data_point.question
+            query_peer_id = random.choice(range(self.num_peers))
+            question_topic = self.peers[query_peer_id].parse_topic(question, self.all_topics)
+
+            grouped_episodes = []
+            for _ in range(max(1, router.cfg.group_size)):
+                current_peer_id = query_peer_id
+                visited_ids = {current_peer_id}
+                transitions = []
+                done = False
+
+                for hop in range(max_ttl):
+                    current_score = self.get_peer_relevance_score(current_peer_id, question)
+
+                    if current_score > query_confidence_threshold:
+                        if transitions:
+                            transitions[-1]["reward"] += reward_hit
+                            transitions[-1]["done"] = 1.0
+                        done = True
+                        break
+
+                    neighbor_ids = list(self.network.neighbors(current_peer_id))
+                    if len(neighbor_ids) == 0:
+                        if transitions:
+                            transitions[-1]["reward"] += reward_miss
+                            transitions[-1]["done"] = 1.0
+                        done = True
+                        break
+
+                    state_features = self.build_ppo_state_features(
+                        current_peer_id=current_peer_id,
+                        hop=hop,
+                        max_ttl=max_ttl,
+                        current_score=current_score,
+                        visited_count=len(visited_ids),
+                    )
+                    selected_neighbors, candidate_features, mask = self.build_ppo_candidate_features(
+                        question=question,
+                        question_topic=question_topic,
+                        neighbor_ids=neighbor_ids,
+                        visited_ids=visited_ids,
+                        max_candidates=router.cfg.max_candidates,
+                    )
+                    if len(selected_neighbors) == 0:
+                        break
+
+                    state_tensor = torch.tensor(state_features, dtype=torch.float, device=router.device)
+                    candidates_tensor = torch.tensor(candidate_features, dtype=torch.float, device=router.device)
+                    mask_tensor = torch.tensor(mask, dtype=torch.bool, device=router.device)
+
+                    action, log_prob, value, _ = router.act(
+                        state=state_tensor,
+                        candidates=candidates_tensor,
+                        mask=mask_tensor,
+                        deterministic=False,
+                    )
+
+                    if action >= len(selected_neighbors):
+                        action = len(selected_neighbors) - 1
+                    next_peer_id = selected_neighbors[action]
+                    next_score = self.get_peer_relevance_score(next_peer_id, question)
+                    topic_reward = topic_match_bonus if (question_topic and question_topic in self.peer_topics[next_peer_id]) else 0.0
+                    revisit_cost = revisit_penalty if next_peer_id in visited_ids else 0.0
+                    progress_reward = progress_weight * (next_score - current_score)
+                    hop_ratio = (hop + 1) / max(1, max_ttl)
+                    progressive_hop_cost = hop_progressive_penalty * hop_ratio
+                    reward = (
+                        relevance_weight * next_score
+                        + progress_reward
+                        + topic_reward
+                        - message_penalty
+                        - hop_penalty
+                        - progressive_hop_cost
+                        - revisit_cost
+                    )
+
+                    step_done = 1.0 if next_score > query_confidence_threshold else 0.0
+                    if step_done:
+                        reward += reward_hit + early_hit_bonus * (1.0 - hop_ratio)
+
+                    transitions.append({
+                        "state": state_tensor.detach().cpu(),
+                        "candidates": candidates_tensor.detach().cpu(),
+                        "mask": mask_tensor.detach().cpu(),
+                        "action": action,
+                        "log_prob": log_prob,
+                        "value": value,
+                        "reward": reward,
+                        "done": step_done,
+                    })
+
+                    current_peer_id = next_peer_id
+                    visited_ids.add(current_peer_id)
+                    if step_done:
+                        done = True
+                        break
+
+                if not done and transitions:
+                    transitions[-1]["reward"] += reward_miss
+                    transitions[-1]["done"] = 1.0
+
+                if transitions:
+                    grouped_episodes.append(transitions)
+
+            router.update(grouped_episodes)
+
+            if (episode + 1) % 50 == 0:
+                logger.debug(f"GRPO training episode {episode + 1}/{num_episodes} finished")
+
+    def grpo_query(
+            self,
+            question: str,
+            router: GRPORouter,
+            query_peer_id: Optional[int] = None,
+            query_confidence_threshold: float = 0.5,
+            max_ttl: int = 6,
+    ) -> RAGAnswer:
+        """Queries the network using a trained GRPO policy to select the next hop."""
+        num_messages = 0
+
+        if query_peer_id is None:
+            query_peer_id = random.choice(range(self.num_peers))
+            logger.debug(f"Randomly selected starting peer: {query_peer_id}")
+
+        question_topic = self.peers[query_peer_id].parse_topic(question, self.all_topics)
+        current_peer_id = query_peer_id
+        visited_ids = {current_peer_id}
+
+        for hop in range(max_ttl):
+            current_answer, relevant_knowledge, relevant_score, is_query_hit = \
+                self.peers[current_peer_id].query(question, query_confidence_threshold)
+            num_messages += 1
+
+            if current_answer is not None:
+                return RAGAnswer(
+                    answer=str(current_answer),
+                    relevant_knowledge=relevant_knowledge,
+                    relevant_score=relevant_score,
+                    num_hops=hop,
+                    num_messages=num_messages,
+                    is_query_hit=is_query_hit
+                )
+
+            neighbor_ids = list(self.network.neighbors(current_peer_id))
+            if len(neighbor_ids) == 0:
+                break
+
+            current_score = self.get_peer_relevance_score(current_peer_id, question)
+            state_features = self.build_ppo_state_features(
+                current_peer_id=current_peer_id,
+                hop=hop,
+                max_ttl=max_ttl,
+                current_score=current_score,
+                visited_count=len(visited_ids),
+            )
+            selected_neighbors, candidate_features, mask = self.build_ppo_candidate_features(
+                question=question,
+                question_topic=question_topic,
+                neighbor_ids=neighbor_ids,
+                visited_ids=visited_ids,
+                max_candidates=router.cfg.max_candidates,
+            )
+            if len(selected_neighbors) == 0:
+                break
+
+            state_tensor = torch.tensor(state_features, dtype=torch.float, device=router.device)
+            candidates_tensor = torch.tensor(candidate_features, dtype=torch.float, device=router.device)
+            mask_tensor = torch.tensor(mask, dtype=torch.bool, device=router.device)
+
+            action, _, _, _ = router.act(
+                state=state_tensor,
+                candidates=candidates_tensor,
+                mask=mask_tensor,
+                deterministic=True,
+            )
+
+            if action >= len(selected_neighbors):
+                break
+
+            next_peer_id = selected_neighbors[action]
+            if next_peer_id in visited_ids and len(visited_ids) < self.num_peers:
+                non_visited = [nid for nid in selected_neighbors if nid not in visited_ids]
+                if non_visited:
+                    next_peer_id = non_visited[0]
+
+            current_peer_id = next_peer_id
+            visited_ids.add(current_peer_id)
+
+        return RAGAnswer(
+            answer="",
+            relevant_knowledge="",
+            relevant_score=0.0,
+            num_hops=max_ttl,
+            num_messages=num_messages,
+            is_query_hit=False
+        )
+
 
     def init_knowledge(self, data_points: List[Datapoint]):
         """
