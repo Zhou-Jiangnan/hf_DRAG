@@ -105,8 +105,6 @@ The simulator performs **training first** and then **evaluation** in one run whe
    - MMLU (default): `./config/data/mmlu.yaml`
    - medical: `./config/data/medical.yaml`
    - news: `./config/data/news.yaml`
-   - NQ-Open: `./config/data/nq_open.yaml`
-   - HotpotQA: `./config/data/hotpotqa.yaml`
 
 2. **Run a quick PPO smoke test (20 samples)**
 
