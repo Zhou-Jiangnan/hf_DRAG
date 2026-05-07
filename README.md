@@ -168,4 +168,89 @@ If PPO underperforms TARW, start tuning these reward-shaping knobs:
 - `--rag.ppo_hop_progressive_penalty` (increase hop penalty at later steps)
 - `--rag.ppo_early_hit_bonus` (reward early successful hits to reduce avg_num_hops)
 
+## Federated privacy PPO (experimental)
+
+To run federated PPO routing with privacy settings:
+
+```bash
+python simulator.py \
+  --config ./config/rag.yaml \
+  --config ./config/llm/llama32_3b.yaml \
+  --config ./config/data/mmlu.yaml \
+  --rag.network_type DRAG \
+  --rag.search_algorithm PPO \
+  --rag.enable_federated_privacy true \
+  --rag.fed_rounds 20 \
+  --rag.fed_local_epochs 1 \
+  --rag.fed_client_fraction 0.5 \
+  --rag.fed_dp_mechanism dp_fedavg \
+  --rag.fed_dp_clip_norm 1.0 \
+  --rag.fed_dp_noise_multiplier 0.6 \
+  --rag.fed_privacy_attack_eval true
+```
+
+MIA metrics are appended to `metrics.csv` as:
+- `mia_auc`
+- `mia_attack_advantage`
+
+For quick baseline sweeps, see:
+
+```bash
+bash auto_scripts/fed_privacy_baselines.sh
+```
+
+For ablation sweeps (noise/client-fraction/local-epochs), see:
+
+```bash
+bash auto_scripts/fed_privacy_ablation.sh
+```
+
+Attack methods summary:
+
+```bash
+cat docs/attack_methods.md
+```
+
+CCFC-oriented selection/report outline:
+
+```bash
+cat docs/ccfc_selection_and_meeting_outline.md
+```
+
+CSCloud 2026 feasibility assessment:
+
+```bash
+cat docs/cscloud2026_feasibility_assessment.md
+```
+
+Federated-RAG comparison and roadmap:
+
+```bash
+cat docs/federated_rag_comparison_and_roadmap.md
+```
+
+Baseline adaptation playbook (when methods are not code-compatible):
+
+```bash
+cat docs/baseline_adaptation_playbook.md
+```
+
+Cross-domain FL privacy algorithms (transfer to this project):
+
+```bash
+cat docs/cross_domain_fl_privacy_algorithms.md
+```
+
+Comparison protocol & SOTA-positioning notes:
+
+```bash
+cat docs/comparison_protocol_and_sota.md
+```
+
+10-minute meeting brief (ready-to-present):
+
+```bash
+cat docs/tomorrow_10min_report.md
+```
+
 ## DEBUG

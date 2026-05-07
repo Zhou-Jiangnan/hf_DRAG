@@ -122,15 +122,22 @@ class DRAGNetwork:
             revisit_penalty: float = 0.1,
             hop_progressive_penalty: float = 0.02,
             early_hit_bonus: float = 0.3,
+            query_peer_ids: Optional[List[int]] = None,
     ):
         if len(data_points) == 0:
             logger.warning("Skip PPO training since no datapoints are provided")
+            return
+        if query_peer_ids is not None and len(query_peer_ids) == 0:
+            logger.warning("Skip PPO training since query_peer_ids is empty")
             return
 
         for episode in tqdm(range(num_episodes), desc="Training PPO router"):
             data_point = random.choice(data_points)
             question = data_point.question
-            query_peer_id = random.choice(range(self.num_peers))
+            if query_peer_ids is None:
+                query_peer_id = random.choice(range(self.num_peers))
+            else:
+                query_peer_id = random.choice(query_peer_ids)
             question_topic = self.peers[query_peer_id].parse_topic(question, self.all_topics)
 
             current_peer_id = query_peer_id

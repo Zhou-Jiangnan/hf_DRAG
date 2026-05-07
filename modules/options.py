@@ -74,6 +74,19 @@ def parse_args():
     parser.add_argument("--rag.grpo_hidden_dim", type=int)
     parser.add_argument("--rag.grpo_max_candidates", type=int)
 
+    # Federated privacy training (experimental)
+    parser.add_argument("--rag.enable_federated_privacy", type=bool)
+    parser.add_argument("--rag.fed_rounds", type=int)
+    parser.add_argument("--rag.fed_local_epochs", type=int)
+    parser.add_argument("--rag.fed_client_fraction", type=float)
+    parser.add_argument("--rag.fed_dp_mechanism", type=str)
+    parser.add_argument("--rag.fed_dp_clip_norm", type=float)
+    parser.add_argument("--rag.fed_dp_noise_multiplier", type=float)
+    parser.add_argument("--rag.fed_secure_agg", type=bool)
+    parser.add_argument("--rag.fed_privacy_attack_eval", type=bool)
+    parser.add_argument("--rag.fed_mia_holdout_ratio", type=float)
+    parser.add_argument("--rag.fed_mia_max_samples", type=int)
+
     parser.add_argument("--config", action="config")
 
     cfg = parser.parse_args()
