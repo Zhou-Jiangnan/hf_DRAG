@@ -45,3 +45,15 @@ rag:
   grpo_group_size: 4
   grpo_hidden_dim: 64
   grpo_max_candidates: 8
+  # Federated privacy training (experimental; reserved for FL+DP studies)
+  enable_federated_privacy: false
+  fed_rounds: 20
+  fed_local_epochs: 1
+  fed_client_fraction: 1.0
+  fed_dp_mechanism: "none"  # none, dp_sgd, dp_fedavg, adaptive_dp
+  fed_dp_clip_norm: 1.0
+  fed_dp_noise_multiplier: 0.8
+  fed_secure_agg: false
+  fed_privacy_attack_eval: true
+  fed_mia_holdout_ratio: 0.2
+  fed_mia_max_samples: 200

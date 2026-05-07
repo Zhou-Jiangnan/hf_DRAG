@@ -14,6 +14,8 @@ from modules.data_types import Datapoint, Testcase
 from modules.ppo_router import PPORouter, PPOConfig
 from modules.grpo_router import GRPORouter, GRPOConfig
 from modules.rag_network import DRAGNetwork, CRAGNetwork, NoRAGNetwork
+from modules.federated_trainer import FederatedPrivacyConfig, FederatedPPORunner
+from modules.privacy_attacks import MembershipInferenceAttack, collect_ppo_membership_scores
 from modules.evaluator import QAEvaluator
 from modules.options import parse_args
 
@@ -115,6 +117,24 @@ def run_simulation(cfg: Namespace):
     else:
         raise ValueError(f"Unknown network type: {cfg.rag.network_type}")
 
+    member_data_points = filtered_data_points
+    nonmember_data_points: List[Datapoint] = []
+    if (
+        cfg.rag.network_type == "DRAG"
+        and cfg.rag.search_algorithm == "PPO"
+        and cfg.rag.enable_federated_privacy
+        and cfg.rag.fed_privacy_attack_eval
+        and len(filtered_data_points) > 1
+    ):
+        holdout_ratio = min(max(cfg.rag.fed_mia_holdout_ratio, 0.0), 0.9)
+        holdout_size = int(len(filtered_data_points) * holdout_ratio)
+        holdout_size = min(max(1, holdout_size), len(filtered_data_points) - 1)
+        shuffled = filtered_data_points[:]
+        random.shuffle(shuffled)
+        nonmember_data_points = shuffled[:holdout_size]
+        member_data_points = shuffled[holdout_size:]
+        filtered_data_points = member_data_points
+
     # Initialize DRAG parameters
     query_confidence_threshold = cfg.rag.query_confidence_threshold
     num_query_neighbor = min(cfg.rag.num_query_neighbor, cfg.rag.num_peers - 1)
@@ -148,23 +168,53 @@ def run_simulation(cfg: Namespace):
         )
         ppo_router = PPORouter(ppo_cfg, device=cfg.rag.ppo_device)
         logger.info(f"PPO router device: {ppo_router.device}")
-        rag_net.ppo_train(
-            router=ppo_router,
-            data_points=filtered_data_points,
-            num_episodes=cfg.rag.ppo_train_episodes,
-            max_ttl=query_ttl,
-            query_confidence_threshold=query_confidence_threshold,
-            reward_hit=cfg.rag.ppo_reward_hit,
-            reward_miss=cfg.rag.ppo_reward_miss,
-            message_penalty=cfg.rag.ppo_message_penalty,
-            hop_penalty=cfg.rag.ppo_hop_penalty,
-            relevance_weight=cfg.rag.ppo_relevance_weight,
-            progress_weight=cfg.rag.ppo_progress_weight,
-            topic_match_bonus=cfg.rag.ppo_topic_match_bonus,
-            revisit_penalty=cfg.rag.ppo_revisit_penalty,
-            hop_progressive_penalty=cfg.rag.ppo_hop_progressive_penalty,
-            early_hit_bonus=cfg.rag.ppo_early_hit_bonus,
-        )
+        if cfg.rag.enable_federated_privacy:
+            fed_cfg = FederatedPrivacyConfig(
+                rounds=cfg.rag.fed_rounds,
+                local_epochs=cfg.rag.fed_local_epochs,
+                client_fraction=cfg.rag.fed_client_fraction,
+                dp_mechanism=cfg.rag.fed_dp_mechanism,
+                dp_clip_norm=cfg.rag.fed_dp_clip_norm,
+                dp_noise_multiplier=cfg.rag.fed_dp_noise_multiplier,
+                secure_agg=cfg.rag.fed_secure_agg,
+            )
+            fed_runner = FederatedPPORunner(fed_cfg)
+            fed_runner.train(
+                rag_net=rag_net,
+                global_router=ppo_router,
+                ppo_cfg=ppo_cfg,
+                data_points=filtered_data_points,
+                max_ttl=query_ttl,
+                query_confidence_threshold=query_confidence_threshold,
+                reward_hit=cfg.rag.ppo_reward_hit,
+                reward_miss=cfg.rag.ppo_reward_miss,
+                message_penalty=cfg.rag.ppo_message_penalty,
+                hop_penalty=cfg.rag.ppo_hop_penalty,
+                relevance_weight=cfg.rag.ppo_relevance_weight,
+                progress_weight=cfg.rag.ppo_progress_weight,
+                topic_match_bonus=cfg.rag.ppo_topic_match_bonus,
+                revisit_penalty=cfg.rag.ppo_revisit_penalty,
+                hop_progressive_penalty=cfg.rag.ppo_hop_progressive_penalty,
+                early_hit_bonus=cfg.rag.ppo_early_hit_bonus,
+            )
+        else:
+            rag_net.ppo_train(
+                router=ppo_router,
+                data_points=filtered_data_points,
+                num_episodes=cfg.rag.ppo_train_episodes,
+                max_ttl=query_ttl,
+                query_confidence_threshold=query_confidence_threshold,
+                reward_hit=cfg.rag.ppo_reward_hit,
+                reward_miss=cfg.rag.ppo_reward_miss,
+                message_penalty=cfg.rag.ppo_message_penalty,
+                hop_penalty=cfg.rag.ppo_hop_penalty,
+                relevance_weight=cfg.rag.ppo_relevance_weight,
+                progress_weight=cfg.rag.ppo_progress_weight,
+                topic_match_bonus=cfg.rag.ppo_topic_match_bonus,
+                revisit_penalty=cfg.rag.ppo_revisit_penalty,
+                hop_progressive_penalty=cfg.rag.ppo_hop_progressive_penalty,
+                early_hit_bonus=cfg.rag.ppo_early_hit_bonus,
+            )
     elif cfg.rag.network_type == "DRAG" and cfg.rag.search_algorithm == "GRPO":
         grpo_cfg = GRPOConfig(
             hidden_dim=cfg.rag.grpo_hidden_dim,
@@ -277,6 +327,47 @@ def run_simulation(cfg: Namespace):
     metrics_logger.save()
 
     logger.info(f"\nFinal Evaluation Results:\n{json.dumps(eval_results)}\n")
+
+    if (
+        cfg.rag.network_type == "DRAG"
+        and cfg.rag.search_algorithm == "PPO"
+        and cfg.rag.enable_federated_privacy
+        and cfg.rag.fed_privacy_attack_eval
+        and ppo_router is not None
+        and len(member_data_points) > 0
+        and len(nonmember_data_points) > 0
+    ):
+        max_samples = max(1, cfg.rag.fed_mia_max_samples)
+        sampled_member = random.sample(member_data_points, k=min(max_samples, len(member_data_points)))
+        sampled_nonmember = random.sample(nonmember_data_points, k=min(max_samples, len(nonmember_data_points)))
+        member_scores = collect_ppo_membership_scores(
+            rag_net=rag_net,
+            router=ppo_router,
+            questions=[d.question for d in sampled_member],
+            query_confidence_threshold=query_confidence_threshold,
+            max_ttl=query_ttl,
+        )
+        nonmember_scores = collect_ppo_membership_scores(
+            rag_net=rag_net,
+            router=ppo_router,
+            questions=[d.question for d in sampled_nonmember],
+            query_confidence_threshold=query_confidence_threshold,
+            max_ttl=query_ttl,
+        )
+        mia_result = MembershipInferenceAttack().evaluate(member_scores, nonmember_scores)
+        if mia_result is not None:
+            privacy_metrics = {
+                "mia_auc": mia_result.auc,
+                "mia_attack_advantage": mia_result.attack_advantage,
+                "mia_best_threshold": mia_result.best_threshold,
+                "mia_member_mean_score": mia_result.member_mean_score,
+                "mia_nonmember_mean_score": mia_result.nonmember_mean_score,
+                "mia_num_member_samples": mia_result.num_member_samples,
+                "mia_num_nonmember_samples": mia_result.num_nonmember_samples,
+            }
+            metrics_logger.log(privacy_metrics)
+            metrics_logger.save()
+            logger.info(f"MIA metrics: {json.dumps(privacy_metrics)}")
 
 
 def main():
